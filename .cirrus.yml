@@ -1,0 +1,33 @@
+---
+
+# Main collection of env. vars to set for all tasks and scripts.
+env:
+    # Shell used to execute all script commands
+    CIRRUS_SHELL: "/bin/bash"
+    # No need to go crazy, but grab enough to cover most PRs
+    CIRRUS_CLONE_DEPTH: 10
+
+validate_task:
+    name: "Validate"
+    alias: "validate"
+    only_if: &is_pr $CIRRUS_PR != ''
+    timeout_in: 5m
+    container: &ci_container
+        # Ref: https://cirrus-ci.org/guide/docker-builder-vm/#dockerfile-as-a-ci-environment
+        dockerfile: "ci/Containerfile"
+        cpu: 1
+        memory: 1
+    script:
+        - "ci/shellcheck.sh"
+        - "ci/validate.sh"
+
+success_task:
+    alias: success
+    name: Total Success
+    only_if: *is_pr
+    depends_on:
+        - validate
+    container:
+        <<: *ci_container
+    clone_script: /bin/true
+    script: /bin/true
