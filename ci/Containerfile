@@ -1,0 +1,26 @@
+# This dockerfile defines the environment for Cirrus-CI when
+# running automated checks and tests.
+#
+# When using the dockerfile-as-ci feature of Cirrus-CI, it's unsafe
+# to rely on COPY or ADD instructions.  See documentation for warning.
+# https://cirrus-ci.org/guide/docker-builder-vm/#dockerfile-as-a-ci-environment
+
+FROM quay.io/centos/centos:stream9-minimal
+MAINTAINER https://github.com/containers/image_build/ci
+
+RUN microdnf update -y && \
+    microdnf install -y epel-release && \
+    microdnf install -y \
+        ShellCheck \
+        findutils \
+        gawk \
+        git \
+        jq \
+        sed \
+        util-linux \
+        && \
+    microdnf clean all
+
+ARG A_URL="https://raw.githubusercontent.com/containers/automation/master/bin/install_automation.sh"
+ENV AUTOMATION_VERSION="5.0.0"
+RUN curl -sL "$A_URL" | bash -s "$AUTOMATION_VERSION"
