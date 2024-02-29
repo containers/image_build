@@ -7,6 +7,8 @@ env:
     # No need to go crazy, but grab enough to cover most PRs
     CIRRUS_CLONE_DEPTH: 10
 
+gcp_credentials: ENCRYPTED[88b219cf6b4f2d70c4ff7f8c6c3186396102e14a27b47b985e40a0a0bc5337a270f9eee195b36ff6b3e2f07558998a95]
+
 validate_task:
     name: "Validate"
     alias: "validate"
@@ -21,12 +23,75 @@ validate_task:
         - "ci/shellcheck.sh"
         - "ci/validate.sh"
 
+test_image_build_task:
+    alias: test_image_build
+    name: Test build ${REPO_NAME}/${FLAVOR_NAME} image
+    only_if: *is_pr
+    # No need to test if changes don't include ...
+    skip: "!changesInclude('.cirrus.yml', 'podman/**/*', 'buildah/**/*', 'skopeo/**/*')"
+    gce_instance: &build_push
+        image_project: "libpod-218412"
+        image_family: 'build-push-cache'
+        zone: "us-central1-a"
+        disk: 200
+    env:
+        ARCHES: amd64
+        DRYRUN: 1  # Don't actually push anything, only build.
+        REPO_PREFIX: https://github.com/containers
+        A_DEBUG: 1
+    matrix: &pbs_matrix
+        - env:
+              FLAVOR_NAME: upstream
+          matrix: &pbs_images
+                - env:
+                      REPO_NAME: podman
+                      CTX_SUB: podman/$FLAVOR_NAME
+                - env:
+                      REPO_NAME: buildah
+                      CTX_SUB: buildah
+                - env:
+                      REPO_NAME: skopeo
+                      CTX_SUB: skopeo/$FLAVOR_NAME
+        - env:
+              FLAVOR_NAME: testing
+          matrix: *pbs_images
+        - env:
+              FLAVOR_NAME: stable
+          matrix: *pbs_images
+    script: &pbs_script |
+        git clone --depth=1 https://github.com/containers/automation_images.git ../ai
+        bash ../ai/build-push/.install.sh
+        source /etc/automation_environment
+        # The '.' prefix to repo URL is significant - it means do not clone.
+        containers_build_push.sh .${REPO_PREFIX}/${REPO_NAME}.git $CTX_SUB $FLAVOR_NAME
+
+# cron_image_build_task:
+#     alias: cron_image_build
+#     name: Build ${REPO_NAME}/${FLAVOR_NAME} image
+#     only_if: $CIRRUS_CRON == 'pbs'
+#     gce_instance:
+#         <<: *build_push
+#         type: "c3d-standard-4"  # Extra muscle needed for multi-arch emulation
+#     env:
+#         CONTAINERS_USERNAME: #TODO
+#         CONTAINERS_PASSWORD: #TODO
+#         PODMAN_USERNAME: #TODO
+#         PODMAN_PASSWORD: #TODO
+#         BUILDAH_USERNAME: #TODO
+#         BUILDAH_PASSWORD: #TODO
+#         SKOPEO_USERNAME: #TODO
+#         SKOPEO_PASSWORD: #TODO
+#         ARCHES: amd64
+#     matrix: *pbs_matrix
+#     script: *pbs_script
+
 success_task:
     alias: success
     name: Total Success
     only_if: *is_pr
     depends_on:
         - validate
+        - test_image_build
     container:
         <<: *ci_container
     clone_script: /bin/true
