@@ -68,25 +68,24 @@ test_image_build_task:
         # The '.' prefix to repo URL is significant - it means do not clone.
         containers_build_push.sh .${REPO_PREFIX}/${REPO_NAME}.git $CTX_SUB $FLAVOR_NAME
 
-# cron_image_build_task:
-#     alias: cron_image_build
-#     name: Build ${REPO_NAME}/${FLAVOR_NAME} image
-#     only_if: $CIRRUS_CRON == 'pbs'
-#     gce_instance:
-#         <<: *build_push
-#         type: "c3d-standard-4"  # Extra muscle needed for multi-arch emulation
-#     env:
-#         CONTAINERS_USERNAME: #TODO
-#         CONTAINERS_PASSWORD: #TODO
-#         PODMAN_USERNAME: #TODO
-#         PODMAN_PASSWORD: #TODO
-#         BUILDAH_USERNAME: #TODO
-#         BUILDAH_PASSWORD: #TODO
-#         SKOPEO_USERNAME: #TODO
-#         SKOPEO_PASSWORD: #TODO
-#         ARCHES: amd64
-#     matrix: *pbs_matrix
-#     script: *pbs_script
+cron_image_build_task:
+    alias: cron_image_build
+    name: Build ${REPO_NAME}/${FLAVOR_NAME} image
+    only_if: $CIRRUS_CRON == 'cron_image_build_task'
+    gce_instance:
+        <<: *build_push
+        type: "c3d-standard-4"  # Extra muscle needed for multi-arch emulation
+    env:
+        CONTAINERS_USERNAME: ENCRYPTED[f94aa9610f678dc79ca45d49ee4c41a43da9468094883eb386ea907f6218cd49df61f892105109da8b5309523db3ed0b]
+        CONTAINERS_PASSWORD: ENCRYPTED[84a2784130e2c359afa70ad0575b04f448d248ca947d130d3450eb01676e7f934b6de621a167edf56cd4901396dfe7e2]
+        PODMAN_USERNAME: ENCRYPTED[c7c6506427eeecce7c709a94fb7547987545cb4ba7e607e249444b3588a41069ad116781f3187018c12c6fff0fd425d7]
+        PODMAN_PASSWORD: ENCRYPTED[f7c321e7dfb017e4111e0fc3c0f7eb2e743d11f4eddca5cf209c2f25e2c778eb33ab746b6ef91233e570ac3d547a86f0]
+        BUILDAH_USERNAME: ENCRYPTED[58742c385f0938a25cd523837bee50bf40db7c2523dc4506b9a1c3d72233e828ad9527ca638c18eb825d2ceef6d5b31d]
+        BUILDAH_PASSWORD: ENCRYPTED[3d400b0547ef4d56c54dbf05e2ecdc0a1d5b2a3013f194b3e090bed6b1ab67fafbef6dca06cbb2b889b88f894143d40a]
+        SKOPEO_USERNAME: ENCRYPTED[7290f519ec778c3f21353c0279f55ff6e2a59d9fd9b816db8f0a0549f2ea22efc297feb9f7422a6b9f2a6c22f30e1027]
+        SKOPEO_PASSWORD: ENCRYPTED[ad43d3aefef388b22c2e0c837678ff3754994563dbe9574717e7aa68a847e64401b501c882d733149d7896a1d617f806]
+    matrix: *pbs_matrix
+    script: *pbs_script
 
 success_task:
     alias: success
