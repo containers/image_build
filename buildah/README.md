@@ -1,6 +1,6 @@
 [comment]: <> (***ATTENTION*** ***WARNING*** ***ALERT*** ***CAUTION*** ***DANGER***)
 [comment]: <> ()
-[comment]: <> (ANY changes made to this file, once committed/merged must)
+[comment]: <> (ANY changes made below, once committed/merged must)
 [comment]: <> (be manually copy/pasted -in markdown- into the description)
 [comment]: <> (field on Quay at the following locations:)
 [comment]: <> ()
@@ -13,42 +13,12 @@
 
 ![buildah logo](https://cdn.rawgit.com/containers/buildah/main/logos/buildah-logo_large.png)
 
-# buildahimage
+# Buildah Image
 
-## Overview
+## Build information
 
-This directory contains the Dockerfiles necessary to create the buildahimage container
-images that are housed on quay.io under the buildah account.  All repositories where
-the images live are public and can be pulled without credentials.  These container images are secured and the
-resulting containers can run safely with privileges within the container.
-
-The container images are built using the latest Fedora and then Buildah is installed into them.
-The PATH in the container images is set to the default PATH provided by Fedora.  Also, the
-ENTRYPOINT and the WORKDIR variables are not set within these container images, as such they
-default to `/`.
-
-The container images are:
-
-  * `quay.io/containers/buildah:<version>` and `quay.io/buildah/stable:<version>` -
-    These images are built daily. They are intended to contain an unchanging
-    and stable version of buildah.  For the most recent `<version>` tags (`vX`,
-    `vX.Y`, and `vX.Y.Z`) the image contents will be updated daily to incorporate
-    (especially) security upgrades.  For build details, please [see the
-    configuration file](stable/Dockerfile).
-  * `quay.io/containers/buildah:latest` and `quay.io/buildah/stable:latest` -
-    Built daily using the same Dockerfile as above.  The buildah version
-    will remain the "latest" available in Fedora, however the other image
-    contents may vary compared to the version-tagged images.
-  * `quay.io/buildah/testing:latest` - This image is built daily, using the
-    latest version of Buildah that was in the Fedora `updates-testing` repository.
-    The image is Built with [the testing Dockerfile](testing/Dockerfile).
-  * `quay.io/buildah/upstream:latest` - This image is built daily using the latest
-    code found in this GitHub repository.  Due to the image changing frequently,
-    it's not guaranteed to be stable or even executable.  The image is built with
-    [the upstream Dockerfile](upstream/Dockerfile).  Note: The actual compilation
-    of upstream buildah [occurs continuously in
-    COPR](https://copr.fedorainfracloud.org/coprs/rhcontainerbot/podman-next/).
-
+Please see the [top-level image_build repo. README.md for build
+details](https://github.com/containers/image_build/blob/main/README.md).
 
 ## Sample Usage
 

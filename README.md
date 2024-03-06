@@ -6,19 +6,6 @@ Monorepo menagerie of container images and associated build automation
 
 ## Overview
 
-[comment]: <> (***ATTENTION*** ***WARNING*** ***ALERT*** ***CAUTION*** ***DANGER***)
-[comment]: <> ()
-[comment]: <> (ANY changes made below, once committed/merged must)
-[comment]: <> (be manually copy/pasted -in markdown- into the description)
-[comment]: <> (field on Quay at the following locations, where * represents podman|buildah|skopeo:)
-[comment]: <> ()
-[comment]: <> (https://quay.io/repository/containers/*)
-[comment]: <> (https://quay.io/repository/*/stable)
-[comment]: <> (https://quay.io/repository/*/testing)
-[comment]: <> (https://quay.io/repository/*/upstream)
-[comment]: <> ()
-[comment]: <> (***ATTENTION*** ***WARNING*** ***ALERT*** ***CAUTION*** ***DANGER***)
-
 The latest version of these docs may be obtained from [the upstream
 repo.](https://github.com/containers/image_build/blob/main/README.md)
 
@@ -53,100 +40,12 @@ or `skopeo`:
 
 ## Podman Sample Usage
 
-![PODMAN logo](https://raw.githubusercontent.com/containers/common/main/logos/podman-logo-full-vert.png)
-
-```
-podman pull docker://quay.io/podman/stable:latest
-
-podman run --privileged stable podman version
-
-# Create a directory on the host to mount the container's
-# /var/lib/container directory to so containers can be
-# run within the container.
-mkdir /var/lib/mycontainer
-
-# Run the image detached using the host's network in a container name
-# podmanctr, turn off label and seccomp confinement in the container
-# and then do a little shell hackery to keep the container up and running.
-podman run --detach --name=podmanctr --net=host --security-opt label=disable --security-opt seccomp=unconfined --device /dev/fuse:rw -v /var/lib/mycontainer:/var/lib/containers:Z --privileged  stable sh -c 'while true ;do sleep 100000 ; done'
-
-podman exec -it  podmanctr /bin/sh
-
-# Now inside of the container
-
-podman pull alpine
-
-podman images
-
-exit
-```
-
-**Note:** If you encounter a `fuse: device not found` error when running the container image, it is likely that
-the fuse kernel module has not been loaded on your host system.  Use the command `modprobe fuse` to load the
-module and then run the container image.  To enable this automatically at boot time, you can add a configuration
-file to `/etc/modules.load.d`.  See `man modules-load.d` for more details.
-
-More details:
-
-Dan Walsh wrote a blog post on the [Enable Sysadmin](https://www.redhat.com/sysadmin/) site titled [How to use Podman inside of a container](https://www.redhat.com/sysadmin/podman-inside-container).  In it, he details how to use these images as a rootful and as a rootless user.  Please refer to this blog for more detailed information.
-
+[Please see the subdirectory README.md](https://github.com/containers/image_build/blob/main/podman/README.md)
 
 ## Buildah Sample Usage
 
-![buildah logo](https://cdn.rawgit.com/containers/buildah/main/logos/buildah-logo_large.png)
-
-Although not required, it is suggested that [Podman](https://github.com/containers/podman) be used with
-these container images.
-
-```
-podman pull docker://quay.io/buildah/stable:latest
-
-podman run stable buildah version
-
-# Create a directory on the host to mount the container's
-# /var/lib/container directory to so containers can be
-# run within the container.
-mkdir /var/lib/mycontainer
-
-# Run the image detached using the host's network in a container name
-# buildahctr, turn off label and seccomp confinement in the container
-# and then do a little shell hackery to keep the container up and running.
-podman run --detach --name=buildahctr --net=host --security-opt label=disable --security-opt seccomp=unconfined --device /dev/fuse:rw -v /var/lib/mycontainer:/var/lib/containers:Z  stable sh -c 'while true ;do sleep 100000 ; done'
-
-podman exec -it  buildahctr /bin/sh
-
-# Now inside of the container
-
-buildah from alpine
-
-buildah images
-
-exit
-```
-
-**Note:** If you encounter a `fuse: device not found` error when running the container image, it is likely that
-the fuse kernel module has not been loaded on your host system.  Use the command `modprobe fuse` to load the
-module and then run the container image.  To enable this automatically at boot time, you can add a configuration
-file to `/etc/modules.load.d`.  See `man modules-load.d` for more details.
-
+[Please see the subdirectory README.md](https://github.com/containers/image_build/blob/main/buildah/README.md)
 
 ## Skopeo Sample Usage
 
-<img src="https://cdn.rawgit.com/containers/skopeo/main/docs/skopeo.svg" width="250">
-
-Although not required, it is suggested that [Podman](https://github.com/containers/podman) be used with these container images.
-
-```
-# Get Help on Skopeo
-podman run docker://quay.io/skopeo/stable:latest --help
-
-# Get help on the Skopeo Copy command
-podman run docker://quay.io/skopeo/stable:latest copy --help
-
-# Copy the Skopeo container image from quay.io to
-# a private registry
-podman run docker://quay.io/skopeo/stable:latest copy docker://quay.io/skopeo/stable docker://registry.internal.company.com/skopeo
-
-# Inspect the fedora:latest image
-podman run docker://quay.io/skopeo/stable:latest inspect --config docker://registry.fedoraproject.org/fedora:latest  | jq
-```
+[Please see the subdirectory README.md](https://github.com/containers/image_build/blob/main/skopeo/README.md)
