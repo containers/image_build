@@ -6,6 +6,8 @@ env:
     CIRRUS_SHELL: "/bin/bash"
     # No need to go crazy, but grab enough to cover most PRs
     CIRRUS_CLONE_DEPTH: 10
+    # Prefix git URL for every container tool's repo home
+    REPO_PREFIX: https://github.com/containers
 
 gcp_credentials: ENCRYPTED[88b219cf6b4f2d70c4ff7f8c6c3186396102e14a27b47b985e40a0a0bc5337a270f9eee195b36ff6b3e2f07558998a95]
 
@@ -38,7 +40,6 @@ test_image_build_task:
     env:
         ARCHES: amd64
         DRYRUN: 1  # Don't actually push anything, only build.
-        REPO_PREFIX: https://github.com/containers
         A_DEBUG: 1
     matrix: &pbs_matrix
         - env:
