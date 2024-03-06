@@ -33,6 +33,7 @@ test_image_build_task:
         image_project: "libpod-218412"
         image_family: 'build-push-cache'
         zone: "us-central1-a"
+        type: "t2d-standard-4"  # Extra muscle needed for multi-arch emulation
         disk: 200
     env:
         ARCHES: amd64
@@ -72,9 +73,7 @@ cron_image_build_task:
     alias: cron_image_build
     name: Build ${REPO_NAME}/${FLAVOR_NAME} image
     only_if: $CIRRUS_CRON == 'cron_image_build_task'
-    gce_instance:
-        <<: *build_push
-        type: "c3d-standard-4"  # Extra muscle needed for multi-arch emulation
+    gce_instance: *build_push
     env:
         CONTAINERS_USERNAME: ENCRYPTED[f94aa9610f678dc79ca45d49ee4c41a43da9468094883eb386ea907f6218cd49df61f892105109da8b5309523db3ed0b]
         CONTAINERS_PASSWORD: ENCRYPTED[84a2784130e2c359afa70ad0575b04f448d248ca947d130d3450eb01676e7f934b6de621a167edf56cd4901396dfe7e2]
