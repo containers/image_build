@@ -25,18 +25,32 @@ validate_task:
         - "ci/shellcheck.sh"
         - "ci/validate.sh"
 
+test_build-push_task:
+    name: "Test build-push scripts function"
+    alias: test_build-push
+    only_if: *is_pr
+    # No need to test if changes don't include ...
+    skip: "!changesInclude('.cirrus.yml', 'build-push/**/*')"
+    depends_on:
+        - validate
+    gce_instance: &build_push_test_vm
+        image_project: "libpod-218412"
+        image_family: 'build-push-cache'
+        zone: "us-central1-a"
+        disk: 200
+    script: |
+      bash ./build-push/.install.sh
+      bash ./build-push/test.sh
+
 test_image_build_task:
     alias: test_image_build
     name: Test build ${REPO_NAME}/${FLAVOR_NAME} image
     only_if: *is_pr
-    # No need to test if changes don't include ...
-    skip: "!changesInclude('.cirrus.yml', 'podman/**/*', 'buildah/**/*', 'skopeo/**/*')"
+    depends_on:
+        - test_build-push
     gce_instance: &build_push
-        image_project: "libpod-218412"
-        image_family: 'build-push-cache'
-        zone: "us-central1-a"
+        <<: *build_push_test_vm
         type: "t2d-standard-4"  # Extra muscle needed for multi-arch emulation
-        disk: 200
     env:
         ARCHES: amd64
         DRYRUN: 1  # Don't actually push anything, only build.
@@ -48,15 +62,15 @@ test_image_build_task:
                 - env:
                       REPO_NAME: podman
                       CTX_SUB: podman/$FLAVOR_NAME
-                      skip: "!changesInclude('.cirrus.yml', 'podman/**/*')"
+                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'podman/**/*')"
                 - env:
                       REPO_NAME: buildah
                       CTX_SUB: buildah
-                      skip: "!changesInclude('.cirrus.yml', 'buildah/**/*')"
+                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'buildah/**/*')"
                 - env:
                       REPO_NAME: skopeo
                       CTX_SUB: skopeo/$FLAVOR_NAME
-                      skip: "!changesInclude('.cirrus.yml', 'skopeo/**/*')"
+                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'skopeo/**/*')"
         - env:
               FLAVOR_NAME: testing
           matrix: *pbs_images
@@ -64,8 +78,7 @@ test_image_build_task:
               FLAVOR_NAME: stable
           matrix: *pbs_images
     script: &pbs_script |
-        git clone --depth=1 https://github.com/containers/automation_images.git ../ai
-        bash ../ai/build-push/.install.sh
+        bash ./build-push/.install.sh
         source /etc/automation_environment
         # The '.' prefix to repo URL is significant - it means do not clone.
         containers_build_push.sh .${REPO_PREFIX}/${REPO_NAME}.git $CTX_SUB $FLAVOR_NAME
@@ -93,6 +106,7 @@ success_task:
     only_if: *is_pr
     depends_on:
         - validate
+        - test_build-push
         - test_image_build
     container:
         <<: *ci_container
