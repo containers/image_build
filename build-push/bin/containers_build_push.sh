@@ -135,45 +135,41 @@ head_sha=$(git rev-parse HEAD)
 dbg "HEAD is $head_sha"
 
 # Docs should always be in one of two places, otherwise don't list any.
-DOCS_URL=""
+docs_url=""
 for _docs_subdir in "$CTX_SUB/README.md" "$(dirname $CTX_SUB)/README.md"; do
     if [[ -r "./$_docs_subdir" ]]; then
         dbg "Found README.md under '$CLONE_TMP/$_docs_subdir'"
-        DOCS_URL="${REPO_URL%.git}/blob/${head_sha}/$_docs_subdir"
+        # CIRRUS_xyz envars provided by CI and verified non-empty with req_env_vars above
+        # shellcheck disable=SC2154
+        docs_url="${CIRRUS_REPO_CLONE_URL%.git}/blob/${head_sha}/$_docs_subdir"
+        break
     fi
 done
 
-req_env_vars CIRRUS_TASK_ID CIRRUS_CHANGE_IN_REPO CIRRUS_REPO_NAME
+req_env_vars CIRRUS_TASK_ID CIRRUS_CHANGE_IN_REPO CIRRUS_REPO_NAME CIRRUS_REPO_CLONE_URL
 
 # Labels to add to all images as per
 # https://specs.opencontainers.org/image-spec/annotations/?v=v1.0.1
 declare -a label_args
 
 # Use both labels and annotations since some older tools only support labels
-# CIRRUS_TASK_ID provided by CI and verified non-empty
+# Ref: https://github.com/opencontainers/image-spec/blob/main/annotations.md
+# CIRRUS_xyz envars provided by CI and verified non-empty with req_env_vars above
 # shellcheck disable=SC2154
 for arg in "--label" "--annotation"; do
   label_args+=(\
-    # Avoid any ambiguity as to the source that produced the image.
-    # This requires REPO_URL is hosted on github (validated above)
-    "$arg=org.opencontainers.image.source=${REPO_URL%.git}/blob/${head_sha}/${CTX_SUB}/"
-    "$arg=org.opencontainers.image.revision=$head_sha"
     "$arg=org.opencontainers.image.created=$(date -u --iso-8601=seconds)"
     "$arg=org.opencontainers.image.authors=podman@lists.podman.io"
+    "$arg=org.opencontainers.image.url=https://${REPO_FQIN}"
+    "$arg=org.opencontainers.image.source=${CIRRUS_REPO_CLONE_URL%.git}/blob/${head_sha}/${CTX_SUB}/"
+    "$arg=org.opencontainers.image.revision=$head_sha"
   )
 
-  if [[ -n "$DOCS_URL" ]]; then
+  if [[ -n "$docs_url" ]]; then
     label_args+=(\
-      "$arg=org.opencontainers.image.documentation=${DOCS_URL}"
+      "$arg=org.opencontainers.image.documentation=${docs_url}"
     )
   fi
-
-  # Perhaps slightly outside the intended purpose, but it kind of fits, and may help
-  # somebody ascertain provenance a little better.  Note: Even if the console logs
-  # are blank, the Cirrus-CI GraphQL API keeps build and task metadata for years.
-  label_args+=(\
-    "$arg=org.opencontainers.image.url=https://cirrus-ci.com/task/$CIRRUS_TASK_ID"
-  )
 
   # Definitely not any official spec., but offers a quick reference to exactly what produced
   # the images and it's current signature.
@@ -182,6 +178,7 @@ for arg in "--label" "--annotation"; do
     "$arg=built.by.commit=${CIRRUS_CHANGE_IN_REPO}"
     "$arg=built.by.exec=$(basename ${BASH_SOURCE[0]})"
     "$arg=built.by.digest=sha256:$(sha256sum<${BASH_SOURCE[0]} | awk '{print $1}')"
+    "$arg=built.by.logs=https://cirrus-ci.com/task/$CIRRUS_TASK_ID"
   )
 done
 

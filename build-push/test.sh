@@ -84,7 +84,7 @@ verify_built_images() {
     msg "
 ##### Testing execution of '$expected_flavor' images for arches $TESTARCHES #####"
     podman --version
-    req_env_vars TESTARCHES FAKE_VERSION TEST_FQIN TEST_FQIN2
+    req_env_vars TESTARCHES FAKE_VERSION TEST_FQIN TEST_FQIN2 CIRRUS_REPO_CLONE_URL
 
     declare -a _test_fqins
     _test_fqins=("${TEST_FQIN%stable}$expected_flavor")
@@ -132,8 +132,17 @@ verify_built_images() {
         _fltr='.[].Config.Labels."org.opencontainers.image.source"'
         img_src=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
         msg "    img_src=$img_src"
-        showrun grep -F -q "$TEST_REPO_URL" <<<"$img_src"
+        # Checked at beginning of script
+        # shellcheck disable=SC2154
+        showrun grep -F -q "${CIRRUS_REPO_CLONE_URL%.git}" <<<"$img_src"
         showrun grep -F -q "$TEST_REVISION" <<<"$img_src"
+
+        msg "Testing image $_fqin:$test_tag url label"
+        _fltr='.[].Config.Labels."org.opencontainers.image.url"'
+        img_url=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
+        msg "    img_url=$img_url"
+        showrun grep -F -q "example.com" <<<"$img_url"
+
 
         msg "Testing image $_fqin:$test_tag revision label"
         _fltr='.[].Config.Labels."org.opencontainers.image.revision"'
