@@ -154,12 +154,12 @@ declare -a label_args
 # shellcheck disable=SC2154
 for arg in "--label" "--annotation"; do
   label_args+=(\
-    # Avoid any ambiguity as to the source that produced the image.
-    # This requires REPO_URL is hosted on github (validated above)
-    "$arg=org.opencontainers.image.source=${REPO_URL%.git}/blob/${head_sha}/${CTX_SUB}/"
-    "$arg=org.opencontainers.image.revision=$head_sha"
+    # Ref: https://github.com/opencontainers/image-spec/blob/main/annotations.md
     "$arg=org.opencontainers.image.created=$(date -u --iso-8601=seconds)"
     "$arg=org.opencontainers.image.authors=podman@lists.podman.io"
+    "$arg=org.opencontainers.image.url=${REPO_URL%.git}/blob/${head_sha}/README.md"
+    "$arg=org.opencontainers.image.source=${REPO_URL%.git}/blob/${head_sha}/${CTX_SUB}/"
+    "$arg=org.opencontainers.image.revision=$head_sha"
   )
 
   if [[ -n "$DOCS_URL" ]]; then
@@ -168,19 +168,13 @@ for arg in "--label" "--annotation"; do
     )
   fi
 
-  # Perhaps slightly outside the intended purpose, but it kind of fits, and may help
-  # somebody ascertain provenance a little better.  Note: Even if the console logs
-  # are blank, the Cirrus-CI GraphQL API keeps build and task metadata for years.
-  label_args+=(\
-    "$arg=org.opencontainers.image.url=https://cirrus-ci.com/task/$CIRRUS_TASK_ID"
-  )
-
   # Definitely not any official spec., but offers a quick reference to exactly what produced
   # the images and it's current signature.
   label_args+=(\
     "$arg=built.by.repo=${CIRRUS_REPO_NAME}"
     "$arg=built.by.commit=${CIRRUS_CHANGE_IN_REPO}"
     "$arg=built.by.exec=$(basename ${BASH_SOURCE[0]})"
+    "$arg=built.by.logs=https://cirrus-ci.com/task/$CIRRUS_TASK_ID"
     "$arg=built.by.digest=sha256:$(sha256sum<${BASH_SOURCE[0]} | awk '{print $1}')"
   )
 done
@@ -194,11 +188,11 @@ if [[ "$FLAVOR_NAME" == "stable" ]]; then
     FQIN_TMP="$REPO_NAME:temp"
     showrun podman build -t $FQIN_TMP "${build_args[@]}" ./$CTX_SUB
 
-    case "$REPO_NAME" in
-        skopeo) version_cmd="--version" ;;
-        buildah) version_cmd="buildah --version" ;;
-        podman) version_cmd="podman --version" ;;
-        testing) version_cmd="cat FAKE_VERSION" ;;
+    case "$CTX_SUB" in
+        *skopeo*) version_cmd="--version" ;;
+        *buildah*) version_cmd="buildah --version" ;;
+        *podman*) version_cmd="podman --version" ;;
+        *testimage*) version_cmd="cat FAKE_VERSION" ;;
         *) die "Unknown/unsupported repo '$REPO_NAME'" ;;
     esac
 
