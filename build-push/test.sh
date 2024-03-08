@@ -131,17 +131,20 @@ verify_built_images() {
         msg "Testing image $_fqin:$test_tag source label"
         _fltr='.[].Config.Labels."org.opencontainers.image.source"'
         img_src=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
+        msg "    img_src=$img_src"
         showrun grep -F -q "$TEST_REPO_URL" <<<"$img_src"
         showrun grep -F -q "$TEST_REVISION" <<<"$img_src"
 
         msg "Testing image $_fqin:$test_tag revision label"
         _fltr='.[].Config.Labels."org.opencontainers.image.revision"'
         img_rev=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
+        msg "    img_rev=$img_rev"
         showrun test "$img_rev" == "$TEST_REVISION"
 
         msg "Testing image $_fqin:$test_tag built.by.commit label"
         _fltr='.[].Config.Labels."built.by.commit"'
         img_bbc=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
+        msg "    img_bbc=$img_bbc"
         # Checked at beginning of script
         # shellcheck disable=SC2154
         showrun test "$img_bbc" == "$CIRRUS_CHANGE_IN_REPO"
@@ -149,6 +152,7 @@ verify_built_images() {
         msg "Testing image $_fqin:$test_tag docs label"
         _fltr='.[].Config.Labels."org.opencontainers.image.documentation"'
         img_docs=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
+        msg "    img_docs=$img_docs"
         showrun grep -F -q "README.md" <<<"$img_docs"
     done
 }
