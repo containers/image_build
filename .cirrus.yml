@@ -6,6 +6,8 @@ env:
     CIRRUS_SHELL: "/bin/bash"
     # No need to go crazy, but grab enough to cover most PRs
     CIRRUS_CLONE_DEPTH: 10
+    # Prefix git URL for every container tool's repo home
+    REPO_PREFIX: https://github.com/containers
 
 gcp_credentials: ENCRYPTED[88b219cf6b4f2d70c4ff7f8c6c3186396102e14a27b47b985e40a0a0bc5337a270f9eee195b36ff6b3e2f07558998a95]
 
@@ -79,7 +81,7 @@ test_image_build_task:
         bash ./build-push/.install.sh
         source /etc/automation_environment
         # The '.' prefix to repo URL is significant - it means do not clone.
-        containers_build_push.sh .${CIRRUS_REPO_CLONE_URL} $CTX_SUB $FLAVOR_NAME
+        containers_build_push.sh .${REPO_PREFIX}/${REPO_NAME}.git $CTX_SUB $FLAVOR_NAME
 
 cron_image_build_task:
     alias: cron_image_build
