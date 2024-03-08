@@ -8,6 +8,7 @@ env:
     CIRRUS_CLONE_DEPTH: 10
     # Prefix git URL for every container tool's repo home
     REPO_PREFIX: https://github.com/containers
+    IMAGE_SUFFIX: "c20240102t155643z-f39f38d13"
 
 gcp_credentials: ENCRYPTED[88b219cf6b4f2d70c4ff7f8c6c3186396102e14a27b47b985e40a0a0bc5337a270f9eee195b36ff6b3e2f07558998a95]
 
@@ -35,7 +36,7 @@ test_build-push_task:
         - validate
     gce_instance: &build_push_test_vm
         image_project: "libpod-218412"
-        image_family: 'build-push-cache'
+        image_name: 'build-push-${IMAGE_SUFFIX}'
         zone: "us-central1-a"
         disk: 200
     script: |
@@ -97,6 +98,27 @@ cron_image_build_task:
     matrix: *pbs_matrix
     script: *pbs_script
 
+# This task is critical.  It updates the "last-used by" timestamp stored
+# in metadata for all VM images.  This mechanism functions in tandem with
+# an out-of-band pruning operation to remove disused VM images.
+meta_task:
+    name: "VM img. keepalive"
+    alias: meta
+    container:
+        cpu: 1
+        memory: 1
+        image: quay.io/libpod/imgts:latest
+    env:
+        # Space-separated list of images used by this repository state
+        IMGNAMES: build-push-${IMAGE_SUFFIX}
+        BUILDID: "${CIRRUS_BUILD_ID}"
+        REPOREF: "${CIRRUS_REPO_NAME}"
+        GCPJSON: ENCRYPTED[3d93b3b386062c8f0f512237bc18d32f0cff1813076260492670ddcadd5fdb525269a0511c02f6bce5327848b7f1faf2]
+        GCPNAME: ENCRYPTED[132257954e3b64ecabf71d7d45ee9225d64695febb70a73857850826016ff7a21837ac178e39e4e729c93b65352f54ae]
+        GCPPROJECT: libpod-218412
+    clone_script: /bin/true
+    script: /usr/local/bin/entrypoint.sh
+
 success_task:
     alias: success
     name: Total Success
@@ -105,6 +127,7 @@ success_task:
         - validate
         - test_build-push
         - test_image_build
+        - meta
     container:
         <<: *ci_container
     clone_script: /bin/true
