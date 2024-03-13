@@ -6,7 +6,27 @@
 # This image can be used to create a secured container
 # that runs safely with privileges within the container.
 #
+# FLAVOR defaults to stable if unset
+#
+# FLAVOR=stable    acquires a stable version of Skopeo
+#                   from the Fedoras Updates System.
+# FLAVOR=testing   acquires a testing version of Skopeo
+#                   from the Fedoras Updates System.
+# FLAVOR=upstream  acquires a testing version of Skopeo
+#                   from the Fedora Copr Buildsystem.
+#                   https://copr.fedorainfracloud.org/coprs/rhcontainerbot/podman-next/
+#
+# https://bodhi.fedoraproject.org/updates/?search=skopeo
+
 FROM registry.fedoraproject.org/fedora:latest
+ARG FLAVOR=stable
+
+# When building for multiple-architectures in parallel using emulation
+# it's really easy for one/more dnf processes to timeout or mis-count
+# the minimum download rates.  Bump both to be extremely forgiving of
+# an overworked host.
+RUN echo -e "\n\n# Added during image build" >> /etc/dnf/dnf.conf && \
+    echo -e "minrate=100\ntimeout=60\n" >> /etc/dnf/dnf.conf
 
 # Don't include container-selinux and remove
 # directories used by dnf that are just taking
@@ -16,8 +36,26 @@ FROM registry.fedoraproject.org/fedora:latest
 #       https://bugzilla.redhat.com/show_bug.cgi?id=1995337#c3
 RUN dnf -y update && \
     rpm --setcaps shadow-utils 2>/dev/null && \
-    dnf -y install skopeo fuse-overlayfs \
-        --exclude container-selinux && \
+    case "${FLAVOR}" in \
+      stable) \
+        dnf -y install skopeo fuse-overlayfs --exclude container-selinux \
+      ;; \
+      testing) \
+        dnf -y install skopeo fuse-overlayfs --exclude container-selinux \
+            --enablerepo updates-testing \
+      ;; \
+      upstream) \
+        dnf -y install 'dnf-command(copr)' --enablerepo=updates-testing && \
+        dnf -y copr enable rhcontainerbot/podman-next && \
+        dnf -y install skopeo fuse-overlayfs \
+            --exclude container-selinux \
+            --enablerepo=updates-testing \
+      ;; \
+      *) \
+        printf "\\nFLAVOR argument must be set and valid, currently: '${FLAVOR}'\\n\\n" 1>&2 && \
+        exit 1 \
+      ;; \
+    esac && \
     dnf clean all && \
     rm -rf /var/cache /var/log/dnf* /var/log/yum.*
 
