@@ -61,15 +61,12 @@ test_image_build_task:
           matrix: &pbs_images
                 - env:
                       REPO_NAME: podman
-                      CTX_SUB: podman/$FLAVOR_NAME
                       skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'podman/**/*')"
                 - env:
                       REPO_NAME: buildah
-                      CTX_SUB: buildah
                       skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'buildah/**/*')"
                 - env:
                       REPO_NAME: skopeo
-                      CTX_SUB: skopeo/$FLAVOR_NAME
                       skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'skopeo/**/*')"
         - env:
               FLAVOR_NAME: testing
@@ -81,7 +78,7 @@ test_image_build_task:
         bash ./build-push/.install.sh
         source /etc/automation_environment
         # The '.' prefix to repo URL is significant - it means do not clone.
-        containers_build_push.sh .${REPO_PREFIX}/${REPO_NAME}.git $CTX_SUB $FLAVOR_NAME
+        containers_build_push.sh .${REPO_PREFIX}/${REPO_NAME}.git ${REPO_NAME} ${FLAVOR_NAME}
 
 cron_image_build_task:
     alias: cron_image_build
