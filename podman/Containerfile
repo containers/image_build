@@ -78,8 +78,10 @@ RUN sed -e 's|^#mount_program|mount_program|g' \
            -e 's|^mountopt[[:space:]]*=.*$|mountopt = "nodev,fsync=0"|g' \
            /usr/share/containers/storage.conf \
            > /etc/containers/storage.conf && \
-           cp /etc/containers/storage.conf /home/podman/.config/containers/storage.conf && \
-           chown 1000:1000 /home/podman/.config/containers/storage.conf
+    sed -e 's|^graphroot|#graphroot|g' \
+        -e 's|^runroot|#runroot|g' \
+           /etc/containers/storage.conf >/home/podman/.config/containers/storage.conf && \
+    chown 1000:1000 /home/podman/.config/containers/storage.conf
 
 # Setup internal Podman to pass subscriptions down from host to internal container
 RUN printf '/run/secrets/etc-pki-entitlement:/run/secrets/etc-pki-entitlement\n/run/secrets/rhsm:/run/secrets/rhsm\n' > /etc/containers/mounts.conf
