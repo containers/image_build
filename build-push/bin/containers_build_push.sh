@@ -189,7 +189,7 @@ if [[ "$FLAVOR_NAME" == "stable" ]]; then
     # only native arch is needed to extract the version
     dbg "Building temporary local-arch image to extract stable version number"
     FQIN_TMP="$REPO_NAME:temp"
-    showrun podman build -t $FQIN_TMP "${build_args[@]}" ./$CTX_SUB
+    showrun podman build --arch=amd64 -t $FQIN_TMP "${build_args[@]}" ./$CTX_SUB
 
     case "$REPO_NAME" in
         skopeo) version_cmd="--version" ;;
