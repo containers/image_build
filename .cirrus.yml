@@ -69,12 +69,12 @@ gen_pkg_list_task:
                   ARCH: ppc64le
               - env:
                   ARCH: s390x
-        - env:
-              REPO_NAME: buildah
-          matrix: *arches
-        - env:
-              REPO_NAME: skopeo
-          matrix: *arches
+        # - env:
+        #       REPO_NAME: buildah
+        #   matrix: *arches
+        # - env:
+        #       REPO_NAME: skopeo
+        #   matrix: *arches
     script: |
         bash ./build-push/.install.sh
         source /etc/automation_environment
@@ -92,29 +92,32 @@ test_image_build_task:
     gce_instance: *large_vm
     env:
         # Build script is sensitive to this as a CSV list of golang-centric architectures
-        ARCHES: amd64
+        ARCHES: amd64,ppc64le,s390x
         DRYRUN: 1  # Don't actually push anything, only build.
         A_DEBUG: 1
     matrix: &pbs_matrix
+        #- env:
+        #      FLAVOR_NAME: upstream
+        #  matrix: &pbs_images
+        #        - env:
+        #              REPO_NAME: podman
+        #              skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'podman/**/*')"
+        #        - env:
+        #              REPO_NAME: buildah
+        #              skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'buildah/**/*')"
+        #        - env:
+        #              REPO_NAME: skopeo
+        #              skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'skopeo/**/*')"
+        #- env:
+        #      FLAVOR_NAME: testing
+        #  matrix: *pbs_images
+        #- env:
+        #      FLAVOR_NAME: stable
+        #  matrix: *pbs_images
         - env:
-              FLAVOR_NAME: upstream
-          matrix: &pbs_images
-                - env:
-                      REPO_NAME: podman
-                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'podman/**/*')"
-                - env:
-                      REPO_NAME: buildah
-                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'buildah/**/*')"
-                - env:
-                      REPO_NAME: skopeo
-                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'skopeo/**/*')"
-        - env:
-              FLAVOR_NAME: testing
-          matrix: *pbs_images
-        - env:
-              FLAVOR_NAME: stable
-          matrix: *pbs_images
-    build_script: &pbs_script |
+            FLAVOR_NAME: stable
+            REPO_NAME: podman
+    script: &pbs_script |
         bash ./build-push/.install.sh
         source /etc/automation_environment
         if [[ "$FLAVOR_NAME" == "stable" ]]; then
