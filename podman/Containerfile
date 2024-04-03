@@ -18,9 +18,34 @@
 #
 # https://bodhi.fedoraproject.org/updates/?search=podman
 
-FROM registry.fedoraproject.org/fedora:latest
-ARG FLAVOR=stable
+# Must be the latest -supported- Fedora release manifest-list
+ARG BASE_IMAGE="registry.fedoraproject.org/fedora"
+ARG BASE_TAG="39"
 
+# Must run maintain_packages.sh following any changes to the two values below.
+ARG INST_PKGS="podman fuse-overlayfs openssh openssh-clients"
+# Nesting SELinux inside a container isn't supported by this image.
+ARG EXCL_PKGS="container-selinux"
+
+FROM ${BASE_IMAGE}:${BASE_TAG} as cache
+ARG FLAVOR="stable"
+ADD /*-packages.txt /var/cache/dnf/
+RUN echo "FLAVOR is ${FLAVOR}" && \
+    dnf -y makecache && \
+    if [[ "${FLAVOR}" == "stable" ]]; then \
+        dnf --assumeyes --nodocs install koji && \
+        cd /var/cache/dnf && \
+        grep -Ev '^($| +|#+)' ./$(uname -m)-packages.txt \
+            | while read rpm_filename junk; do \
+                 koji download-build --rpm $rpm_filename; \
+            done \
+    elif [[ "${FLAVOR}" != 'testing' ]] && [[ "${FLAVOR}" != 'upstream' ]]; then \
+        echo "FLAVOR build-arg must be 'stable', 'testing', or 'upstream'" && \
+        exit 1; \
+    fi
+
+FROM ${BASE_IMAGE}:${BASE_TAG} as final
+ARG FLAVOR="stable"
 # When building for multiple-architectures in parallel using emulation
 # it's really easy for one/more dnf processes to timeout or mis-count
 # the minimum download rates.  Bump both to be extremely forgiving of
@@ -28,37 +53,37 @@ ARG FLAVOR=stable
 RUN echo -e "\n\n# Added during image build" >> /etc/dnf/dnf.conf && \
     echo -e "minrate=100\ntimeout=60\n" >> /etc/dnf/dnf.conf
 
-# Don't include container-selinux and remove
-# directories used by dnf that are just taking
-# up space.
-# TODO: rpm --setcaps... needed due to Fedora (base) image builds
-#       being (maybe still?) affected by
-#       https://bugzilla.redhat.com/show_bug.cgi?id=1995337#c3
-RUN dnf -y makecache && \
+# Note: rpm --setcaps... needed due to Fedora (base) image builds
+#       failing to record shadow-utils capabilties properly
+#       on /usr/bin/new{u,g}idmap to `cap_set{u,g}id=ep`.
+#       Verify with `rpm -V shadow-utils` (should be blank)
+#       and `getcap <filename>` commands.
+RUN --mount=type=bind,from=cache,src=/var/cache/dnf,dst=/var/cache/dnf,rw \
     dnf -y update && \
     rpm --setcaps shadow-utils 2>/dev/null && \
+    declare -a excl_args && \
+    for pkg in $EXCL_PKGS; do xcl_arg+=( --exclude=$pkg ); done && \
     case "${FLAVOR}" in \
       stable) \
-        dnf -y install podman fuse-overlayfs openssh-clients --exclude container-selinux \
+          cd /var/cache/dnf && \
+          rpm -ivh --excludedocs *.rpm && \
+          cp ./$(uname -m)-packages.txt /root/ \
       ;; \
       testing) \
-        dnf -y install podman fuse-overlayfs openssh-clients --exclude container-selinux \
-            --enablerepo updates-testing \
+          dnf -y install $INST_PKGS "${excl_args[@]}"  \
+              --enablerepo updates-testing \
       ;; \
       upstream) \
-        dnf -y install 'dnf-command(copr)' --enablerepo=updates-testing && \
-        dnf -y copr enable rhcontainerbot/podman-next && \
-        dnf -y install podman fuse-overlayfs openssh-clients \
-            --exclude container-selinux \
-            --enablerepo=updates-testing \
+          dnf -y install 'dnf-command(copr)' --enablerepo=updates-testing && \
+          dnf -y copr enable rhcontainerbot/podman-next && \
+          dnf -y install $INST_PKGS "${excl_args[@]}" \
+              --enablerepo=updates-testing \
       ;; \
       *) \
         printf "\\nFLAVOR argument must be set and valid, currently: '${FLAVOR}'\\n\\n" 1>&2 && \
         exit 1 \
       ;; \
-    esac && \
-    dnf clean all && \
-    rm -rf /var/cache /var/log/dnf* /var/log/yum.*
+    esac
 
 RUN useradd podman; \
 echo -e "podman:1:999\npodman:1001:64535" > /etc/subuid; \
