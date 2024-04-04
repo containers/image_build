@@ -17,7 +17,7 @@
 
 ## Build information
 
-Please see the [top-level image_build repo. README.md for build
+Please see the [containers/image_build repo. README.md for build
 details](https://github.com/containers/image_build/blob/main/README.md).
 
 ## Sample Usage

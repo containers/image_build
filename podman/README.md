@@ -4,10 +4,10 @@
 [comment]: <> (be manually copy/pasted -in markdown- into the description)
 [comment]: <> (field on Quay at the following locations:)
 [comment]: <> ()
-[comment]: <> (https://quay.io/repository/containers/skopeo)
-[comment]: <> (https://quay.io/repository/skopeo/stable)
-[comment]: <> (https://quay.io/repository/skopeo/testing)
-[comment]: <> (https://quay.io/repository/skopeo/upstream)
+[comment]: <> (https://quay.io/repository/containers/podman)
+[comment]: <> (https://quay.io/repository/podman/stable)
+[comment]: <> (https://quay.io/repository/podman/testing)
+[comment]: <> (https://quay.io/repository/podman/upstream)
 [comment]: <> ()
 [comment]: <> (***ATTENTION*** ***WARNING*** ***ALERT*** ***CAUTION*** ***DANGER***)
 
@@ -17,7 +17,7 @@
 
 ## Build information
 
-Please see the [top-level image_build repo. README.md for build
+Please see the [containers/image_build repo. README.md for build
 details](https://github.com/containers/image_build/blob/main/README.md).
 
 ## Sample Usage
