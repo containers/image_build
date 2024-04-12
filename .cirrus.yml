@@ -8,7 +8,7 @@ env:
     CIRRUS_CLONE_DEPTH: 10
     # Prefix git URL for every container tool's repo home
     REPO_PREFIX: https://github.com/containers
-    IMAGE_SUFFIX: "c20240320t153921z-f39f38d13"
+    IMAGE_SUFFIX: "c20240410t200635z-f39f38d13"
 
 gcp_credentials: ENCRYPTED[88b219cf6b4f2d70c4ff7f8c6c3186396102e14a27b47b985e40a0a0bc5337a270f9eee195b36ff6b3e2f07558998a95]
 
