@@ -24,8 +24,8 @@ or `skopeo`:
 
   * `quay.io/containers/*:<version>` and `quay.io/*/stable:<version>` -
     These images are built daily.  They are intended to contain an unchanging
-    and stable version of their container image. For the most recent `<version>` tags (`vX`,
-    `vX.Y`, and `vX.Y.Z`) the image contents will be updated daily to incorporate
+    and stable version of their respective container image. For the most recent `<version>`
+    tags (`vX`, `vX.Y`, and `vX.Y.Z`) the image contents will be updated daily to incorporate
     (especially) security updates.
   * `quay.io/containers/*:latest` and `quay.io/*/stable:latest` -
     Built daily using the same `Containerfile` as above.  The tool versions

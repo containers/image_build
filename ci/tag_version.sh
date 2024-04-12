@@ -24,13 +24,13 @@ fi
 req_env_vars SCRIPT_FILENAME SCRIPT_FILEPATH RUNTIME PLATFORMOS FQIN CONTEXT \
              PUSH ARCHES REGSERVER NAMESPACE IMGNAME MODCMD
 
-if [[ "$#" -lt 1 ]]; then
+if [[ "$#" -eq 0 ]]; then
     # Defined by common automation library
     # shellcheck disable=SC2154
     die "$SCRIPT_FILENAME expects at least one argument"
 fi
 
-if [[ "$#" -ge 2 ]]; then
+if [[ "$#" -ge 1 ]]; then
     FLAVOR_NAME="$1"
     # Version is optional
     unset VERSION

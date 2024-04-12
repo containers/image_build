@@ -6,8 +6,6 @@ env:
     CIRRUS_SHELL: "/bin/bash"
     # No need to go crazy, but grab enough to cover most PRs
     CIRRUS_CLONE_DEPTH: 10
-    # Prefix git URL for every container tool's repo home
-    REPO_PREFIX: https://github.com/containers
     IMAGE_SUFFIX: "c20240410t200635z-f39f38d13"
 
 gcp_credentials: ENCRYPTED[88b219cf6b4f2d70c4ff7f8c6c3186396102e14a27b47b985e40a0a0bc5337a270f9eee195b36ff6b3e2f07558998a95]
@@ -40,12 +38,11 @@ test_build-push_task:
         zone: "us-central1-a"
         disk: 200
     script: |
-      bash ./build-push/.install.sh
-      bash ./build-push/test.sh
+        ./ci/test.sh
 
 test_image_build_task:
     alias: test_image_build
-    name: Test build ${REPO_NAME}/${FLAVOR_NAME} image
+    name: Test build ${CTX_SUB}/${FLAVOR_NAME} image
     only_if: *is_pr
     depends_on:
         - test_build-push
@@ -61,14 +58,14 @@ test_image_build_task:
               FLAVOR_NAME: upstream
           matrix: &pbs_images
                 - env:
-                      REPO_NAME: podman
-                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'podman/**/*')"
+                      CTX_SUB: podman
+                      skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'podman/**/*')"
                 - env:
-                      REPO_NAME: buildah
-                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'buildah/**/*')"
+                      CTX_SUB: buildah
+                      skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'buildah/**/*')"
                 - env:
-                      REPO_NAME: skopeo
-                      skip: "!changesInclude('.cirrus.yml', 'build-push/**/*', 'skopeo/**/*')"
+                      CTX_SUB: skopeo
+                      skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'skopeo/**/*')"
         - env:
               FLAVOR_NAME: testing
           matrix: *pbs_images
@@ -76,14 +73,13 @@ test_image_build_task:
               FLAVOR_NAME: stable
           matrix: *pbs_images
     script: &pbs_script |
-        bash ./build-push/.install.sh
         source /etc/automation_environment
         # The '.' prefix to repo URL is significant - it means do not clone.
-        containers_build_push.sh .${REPO_PREFIX}/${REPO_NAME}.git ${REPO_NAME} ${FLAVOR_NAME}
+        ./ci/containers_build_push.sh ${CIRRUS_REPO_CLONE_URL} ${CTX_SUB} ${FLAVOR_NAME}
 
 cron_image_build_task:
     alias: cron_image_build
-    name: Build ${REPO_NAME}/${FLAVOR_NAME} image
+    name: Build ${CTX_SUB}/${FLAVOR_NAME} image
     only_if: $CIRRUS_CRON == 'cron_image_build_task'
     gce_instance: *build_push
     env:
