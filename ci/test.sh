@@ -64,8 +64,8 @@ TEST_REPO_URL="file://$SRC_TMP"
 
 # Given the flavor-name as the first argument, verify built image
 # expectations.  For 'stable' image, verify that containers_build_push.sh will properly
-# version-tagged both FQINs.  For other flavors, verify expected labels
-# on the `latest` tagged FQINs.
+# version-tagged both FQINs.  For 'immutable' verify version tags only for TEST_FQIN2.
+# For other flavors, verify expected labels on the `latest` tagged FQINs.
 verify_built_images() {
     local _fqin _arch xy_ver x_ver img_ver img_src img_rev _fltr
     local _test_tag expected_flavor _test_fqins img_docs
@@ -82,6 +82,12 @@ verify_built_images() {
         test_tag="v$FAKE_VERSION"
         xy_ver="v$FAKE_VER_X.$FAKE_VER_Y"
         x_ver="v$FAKE_VER_X"
+    elif [[ "$expected_flavor" == "immutable" ]]; then
+        expected_flavor="stable"  # Only the tags are different
+        _test_fqins=("$TEST_FQIN" "$TEST_FQIN2")
+        test_tag="v$FAKE_VERSION-immutable"
+        xy_ver="v$FAKE_VER_X.$FAKE_VER_Y-immutable"
+        x_ver="v$FAKE_VER_X-immutable"
     else
         test_tag="latest"
         xy_ver="latest"
@@ -156,11 +162,20 @@ verify_built_images() {
 }
 
 remove_built_images() {
+    local fqin tag
+    local -a tags
+
     buildah --version
-    for _fqin in $TEST_FQIN $TEST_FQIN2; do
-        for tag in latest v$FAKE_VERSION v$FAKE_VER_X.$FAKE_VER_Y v$FAKE_VER_X; do
-            # Don't care if this fails
-            podman manifest rm $_fqin:$tag || true
+
+    tags=( latest )
+    for tag in v$FAKE_VERSION v$FAKE_VER_X.$FAKE_VER_Y v$FAKE_VER_X; do
+        tags+=( "$tag" "${tag}-immutable" )
+    done
+
+    for fqin in $TEST_FQIN $TEST_FQIN2; do
+        for tag in "${tags[@]}"; do
+            # Not all tests produce every possible tag
+            podman manifest rm $fqin:$tag || true
         done
     done
 }
@@ -171,16 +186,13 @@ _cbp=$CIRRUS_WORKING_DIR/ci/containers_build_push.sh
 
 cd $SRC_TMP
 
-msg "
-##### Testing build-push stable flavor run of '$TEST_FQIN' & '$TEST_FQIN2' #####"
-export DRYRUN=1  # Force containers_build_push.sh not to push anything
-req_env_vars ARCHES DRYRUN
-# containers_build_push.sh is sensitive to 'testing' value.
-env A_DEBUG=1 $_cbp $TEST_REPO_URL testing stable
-verify_built_images stable
-
-msg "
-##### Testing build-push non-stable flavour run for '$TEST_FQIN' & '$TEST_FQIN2' #####"
-remove_built_images
-env A_DEBUG=1 $_cbp $TEST_REPO_URL testing foobarbaz
-verify_built_images foobarbaz
+for flavor_arg in stable foobarbaz immutable; do
+    msg "
+##### Testing build-push $flavor_arg flavor run of '$TEST_FQIN' & '$TEST_FQIN2' #####"
+    remove_built_images
+    export DRYRUN=1  # Force containers_build_push.sh not to push anything
+    req_env_vars ARCHES DRYRUN flavor_arg
+    # containers_build_push.sh is sensitive to 'testing' value.
+    env A_DEBUG=1 $_cbp $TEST_REPO_URL testing $flavor_arg
+    verify_built_images $flavor_arg
+done

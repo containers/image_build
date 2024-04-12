@@ -72,9 +72,11 @@ test_image_build_task:
         - env:
               FLAVOR_NAME: stable
           matrix: *pbs_images
+        - env:
+              FLAVOR_NAME: immutable
+          matrix: *pbs_images
     script: &pbs_script |
         source /etc/automation_environment
-        # The '.' prefix to repo URL is significant - it means do not clone.
         ./ci/containers_build_push.sh ${CIRRUS_REPO_CLONE_URL} ${CTX_SUB} ${FLAVOR_NAME}
 
 cron_image_build_task:
