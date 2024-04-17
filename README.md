@@ -35,6 +35,11 @@ or `skopeo`:
   * `quay.io/containers/*:latest` and `quay.io/*/stable:latest` -
     Built daily using the same `Containerfile` as above.  The tool versions
     will remain the "latest" available in Fedora.
+  * `quay.io/containers/aio:latest` and `quay.io/containers/aio:<date stamp>` -
+    "All In One" image containing Podman, Buildah, and Skopeo.  Built weekly
+    using a similar `Containerfile` as the Podman and Buildah images.  It's a
+    smaller, minimal image, intended to be used as a base-image for development
+    containers or CI/automation.
   * `quay.io/*/testing:latest` - This image is built daily, using the
     latest tooling version available in the Fedora `updates-testing` repository.
   * `quay.io/*/upstream:latest` - This image is built daily using the latest
@@ -54,3 +59,7 @@ or `skopeo`:
 ## Skopeo Sample Usage
 
 [Please see the subdirectory README.md](https://github.com/containers/image_build/blob/main/skopeo/README.md)
+
+## All In One Sample Usage
+
+[Please see the subdirectory README.md](https://github.com/containers/image_build/blob/main/aio/README.md)
