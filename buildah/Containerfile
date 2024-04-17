@@ -1,4 +1,4 @@
-# [stable|testing|upstream]/Containerfile
+# buildah/Containerfile
 #
 # Build a Buildah container image from the latest version
 # of Fedora.

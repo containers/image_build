@@ -1,4 +1,4 @@
-# [stable|testing|upstream]/Containerfile
+# podman/Containerfile
 #
 # Build a Podman container image from the latest
 # stable version of Podman on the Fedoras Updates System.
