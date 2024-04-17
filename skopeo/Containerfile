@@ -1,4 +1,4 @@
-# stable/Containerfile
+# skopeo/Containerfile
 #
 # Build a Skopeo container image from the latest
 # stable version of Skopeo on the Fedoras Updates System.
