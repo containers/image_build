@@ -38,45 +38,34 @@ trap "rm -rf $SRC_TMP" EXIT
 msg "
 ##### Constructing local test repository #####"
 cd $SRC_TMP
-showrun git init -b main testing
+showrun git init -b main .
+mkdir testing
 cd testing
 git config --local user.name "Testy McTestface"
 git config --local user.email "test@example.com"
 git config --local advice.detachedHead "false"
 git config --local commit.gpgsign "false"
-# The following paths match the style of sub-dir in the actual
-# skopeo/buildah/podman repositories.  Only the 'stable' flavor
-# is tested here, since it involves the most complex workflow.
 # Set a default flavor in the Containerfile to detect missing
-# flavor arg / envar processing.
-mkdir -vp "contrib/testimage/stable"
-cd "contrib/testimage/stable"
 echo "build-push-test version v$FAKE_VERSION" | tee "FAKE_VERSION"
 cat <<EOF | tee "Containerfile"
-FROM registry.fedoraproject.org/fedora:latest
+FROM registry.fedoraproject.org/fedora-minimal:latest
 ARG FLAVOR="No Flavor Specified"
 ADD /FAKE_VERSION /
 RUN echo "FLAVOUR=\$FLAVOR" > /FLAVOUR
 EOF
-# As an additional test, build and check images when pasing
-# the 'stable' flavor name as a command-line arg instead
-# of using the subdirectory dirname (old method).
-cd $SRC_TMP/testing/contrib/testimage
 # This file is looked up by the build script.
 echo "Test Docs" > README.md
-cp stable/* ./
-cd $SRC_TMP/testing
 # The images will have the repo & commit ID set as labels
 git add --all
 git commit -m 'test repo initial commit'
 TEST_REVISION=$(git rev-parse HEAD)
 
-TEST_REPO_URL="file://$SRC_TMP/testing"
+TEST_REPO_URL="file://$SRC_TMP"
 
 # Given the flavor-name as the first argument, verify built image
 # expectations.  For 'stable' image, verify that containers_build_push.sh will properly
-# version-tagged both FQINs.  For other flavors, verify expected labels
-# on the `latest` tagged FQINs.
+# version-tagged both FQINs.  For 'immutable' verify version tags only for TEST_FQIN2.
+# For other flavors, verify expected labels on the `latest` tagged FQINs.
 verify_built_images() {
     local _fqin _arch xy_ver x_ver img_ver img_src img_rev _fltr
     local _test_tag expected_flavor _test_fqins img_docs
@@ -93,6 +82,12 @@ verify_built_images() {
         test_tag="v$FAKE_VERSION"
         xy_ver="v$FAKE_VER_X.$FAKE_VER_Y"
         x_ver="v$FAKE_VER_X"
+    elif [[ "$expected_flavor" == "immutable" ]]; then
+        expected_flavor="stable"  # Only the tags are different
+        _test_fqins=("$TEST_FQIN" "$TEST_FQIN2")
+        test_tag="v$FAKE_VERSION-immutable"
+        xy_ver="v$FAKE_VER_X.$FAKE_VER_Y-immutable"
+        x_ver="v$FAKE_VER_X-immutable"
     else
         test_tag="latest"
         xy_ver="latest"
@@ -134,7 +129,7 @@ verify_built_images() {
         msg "    img_src=$img_src"
         # Checked at beginning of script
         # shellcheck disable=SC2154
-        showrun grep -F -q "${CIRRUS_REPO_CLONE_URL%.git}" <<<"$img_src"
+        showrun grep -F -q "$TEST_REPO_URL" <<<"$img_src"
         showrun grep -F -q "$TEST_REVISION" <<<"$img_src"
 
         msg "Testing image $_fqin:$test_tag url label"
@@ -156,7 +151,7 @@ verify_built_images() {
         msg "    img_bbc=$img_bbc"
         # Checked at beginning of script
         # shellcheck disable=SC2154
-        showrun test "$img_bbc" == "$CIRRUS_CHANGE_IN_REPO"
+        showrun test "$img_bbc" == "$TEST_REVISION"
 
         msg "Testing image $_fqin:$test_tag docs label"
         _fltr='.[].Config.Labels."org.opencontainers.image.documentation"'
@@ -167,32 +162,37 @@ verify_built_images() {
 }
 
 remove_built_images() {
+    local fqin tag
+    local -a tags
+
     buildah --version
-    for _fqin in $TEST_FQIN $TEST_FQIN2; do
-        for tag in latest v$FAKE_VERSION v$FAKE_VER_X.$FAKE_VER_Y v$FAKE_VER_X; do
-            # Don't care if this fails
-            podman manifest rm $_fqin:$tag || true
+
+    tags=( latest )
+    for tag in v$FAKE_VERSION v$FAKE_VER_X.$FAKE_VER_Y v$FAKE_VER_X; do
+        tags+=( "$tag" "${tag}-immutable" )
+    done
+
+    for fqin in $TEST_FQIN $TEST_FQIN2; do
+        for tag in "${tags[@]}"; do
+            # Not all tests produce every possible tag
+            podman manifest rm $fqin:$tag || true
         done
     done
 }
 
-msg "
-##### Testing build-push subdir-flavor run of '$TEST_FQIN' & '$TEST_FQIN2' #####"
-cd $SRC_TMP/testing
-export DRYRUN=1  # Force containers_build_push.sh not to push anything
-req_env_vars ARCHES DRYRUN
-# containers_build_push.sh is sensitive to 'testing' value.
-# Also confirms containers_build_push.sh is on $PATH
-env A_DEBUG=1 containers_build_push.sh $TEST_REPO_URL contrib/testimage/stable
-verify_built_images stable
+req_env_vars CIRRUS_WORKING_DIR
+# shellcheck disable=SC2154
+_cbp=$CIRRUS_WORKING_DIR/ci/containers_build_push.sh
 
-msg "
-##### Testing build-push flavour-arg run for '$TEST_FQIN' & '$TEST_FQIN2' #####"
-remove_built_images
-env A_DEBUG=1 containers_build_push.sh $TEST_REPO_URL contrib/testimage foobarbaz
-verify_built_images foobarbaz
+cd $SRC_TMP
 
-msg "
-##### Testing build-push local repo run for '$TEST_FQIN'"
-env A_DEBUG=1 containers_build_push.sh .$TEST_REPO_URL contrib/testimage foobarbaz
-verify_built_images foobarbaz
+for flavor_arg in stable foobarbaz immutable; do
+    msg "
+##### Testing build-push $flavor_arg flavor run of '$TEST_FQIN' & '$TEST_FQIN2' #####"
+    remove_built_images
+    export DRYRUN=1  # Force containers_build_push.sh not to push anything
+    req_env_vars ARCHES DRYRUN flavor_arg
+    # containers_build_push.sh is sensitive to 'testing' value.
+    env A_DEBUG=1 $_cbp $TEST_REPO_URL testing $flavor_arg
+    verify_built_images $flavor_arg
+done
