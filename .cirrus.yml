@@ -53,30 +53,12 @@ test_image_build_task:
         ARCHES: amd64
         DRYRUN: 1  # Don't actually push anything, only build.
         A_DEBUG: 1
-    matrix: &pbs_matrix
-        - env:
-              FLAVOR_NAME: upstream
-          matrix: &pbs_images
-                - env:
-                      CTX_SUB: podman
-                      skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'podman/**/*')"
-                - env:
-                      CTX_SUB: buildah
-                      skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'buildah/**/*')"
-                - env:
-                      CTX_SUB: skopeo
-                      skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'skopeo/**/*')"
-        - env:
-              FLAVOR_NAME: testing
-          matrix: *pbs_images
-        - env:
-              FLAVOR_NAME: stable
-          matrix: *pbs_images
-        - env:
-              FLAVOR_NAME: immutable
-          matrix: *pbs_images
+        FLAVOR_NAME: immutable
+        CTX_SUB: podman
     script: &pbs_script |
         source /etc/automation_environment
+        export INSTALL_PREFIX=/usr/share
+        $AUTOMATION_LIB_PATH/../bin/install_automation.sh latest build-push
         ./ci/containers_build_push.sh ${CIRRUS_REPO_CLONE_URL} ${CTX_SUB} ${FLAVOR_NAME}
 
 cron_image_build_task:
@@ -93,7 +75,6 @@ cron_image_build_task:
         BUILDAH_PASSWORD: ENCRYPTED[3d400b0547ef4d56c54dbf05e2ecdc0a1d5b2a3013f194b3e090bed6b1ab67fafbef6dca06cbb2b889b88f894143d40a]
         SKOPEO_USERNAME: ENCRYPTED[7290f519ec778c3f21353c0279f55ff6e2a59d9fd9b816db8f0a0549f2ea22efc297feb9f7422a6b9f2a6c22f30e1027]
         SKOPEO_PASSWORD: ENCRYPTED[ad43d3aefef388b22c2e0c837678ff3754994563dbe9574717e7aa68a847e64401b501c882d733149d7896a1d617f806]
-    matrix: *pbs_matrix
     script: *pbs_script
 
 # This task is critical.  It updates the "last-used by" timestamp stored
