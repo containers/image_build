@@ -85,8 +85,8 @@ cron_image_build_task:
     only_if: $CIRRUS_CRON == 'cron_image_build_task'
     gce_instance: *build_push
     env:
-        CONTAINERS_USERNAME: ENCRYPTED[f94aa9610f678dc79ca45d49ee4c41a43da9468094883eb386ea907f6218cd49df61f892105109da8b5309523db3ed0b]
-        CONTAINERS_PASSWORD: ENCRYPTED[84a2784130e2c359afa70ad0575b04f448d248ca947d130d3450eb01676e7f934b6de621a167edf56cd4901396dfe7e2]
+        CONTAINERS_USERNAME: &cntu ENCRYPTED[f94aa9610f678dc79ca45d49ee4c41a43da9468094883eb386ea907f6218cd49df61f892105109da8b5309523db3ed0b]
+        CONTAINERS_PASSWORD: &cntp ENCRYPTED[84a2784130e2c359afa70ad0575b04f448d248ca947d130d3450eb01676e7f934b6de621a167edf56cd4901396dfe7e2]
         PODMAN_USERNAME: ENCRYPTED[c7c6506427eeecce7c709a94fb7547987545cb4ba7e607e249444b3588a41069ad116781f3187018c12c6fff0fd425d7]
         PODMAN_PASSWORD: ENCRYPTED[f7c321e7dfb017e4111e0fc3c0f7eb2e743d11f4eddca5cf209c2f25e2c778eb33ab746b6ef91233e570ac3d547a86f0]
         BUILDAH_USERNAME: ENCRYPTED[58742c385f0938a25cd523837bee50bf40db7c2523dc4506b9a1c3d72233e828ad9527ca638c18eb825d2ceef6d5b31d]
@@ -95,6 +95,32 @@ cron_image_build_task:
         SKOPEO_PASSWORD: ENCRYPTED[ad43d3aefef388b22c2e0c837678ff3754994563dbe9574717e7aa68a847e64401b501c882d733149d7896a1d617f806]
     matrix: *pbs_matrix
     script: *pbs_script
+
+test_aio_image_build_task:
+    alias: test_aio_image_build
+    name: "Test build AIO image"
+    only_if: *is_pr
+    skip: "!changesInclude('.cirrus.yml', 'ci/aio_build_push.sh', 'ci/tag_version.sh', 'aio/**/*')"
+    depends_on:
+        - test_build-push
+    gce_instance: *build_push
+    env:
+        ARCHES: amd64
+        DRYRUN: 1  # Don't actually push anything, only build.
+        A_DEBUG: 1
+    build_script: &aio_script |
+        source /etc/automation_environment
+        ./ci/aio_build_push.sh ${CIRRUS_REPO_CLONE_URL}
+    test_script: ./aio/test.sh
+
+cron_aio_build_task:
+    alias: cron_aio_build
+    only_if: $CIRRUS_CRON == 'cron_aio_build_task'
+    gce_instance: *build_push
+    env:
+        CONTAINERS_USERNAME: *cntu
+        CONTAINERS_PASSWORD: *cntp
+    build_script: *aio_script
 
 # This task is critical.  It updates the "last-used by" timestamp stored
 # in metadata for all VM images.  This mechanism functions in tandem with
@@ -125,6 +151,7 @@ success_task:
         - validate
         - test_build-push
         - test_image_build
+        - test_aio_image_build
         - meta
     container:
         <<: *ci_container

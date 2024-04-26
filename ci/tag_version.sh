@@ -109,6 +109,9 @@ if [[ "$FLAVOR_NAME" == "stable"  || "$FLAVOR_NAME" == "immutable" ]]; then
         $RUNTIME manifest rm $FQIN:latest || $RUNTIME rm $FQIN:latest
         msg "Successfully removed non-immutable $FQIN:latest"
     fi
+elif [[ "$FLAVOR_NAME" == "aio" ]]; then
+    # Not a real flavor, see aio_build_push.sh
+    handle_tagging $VERSION
 else
     warn "$SCRIPT_FILENAME not version-tagging for '$FLAVOR_NAME' flavor'$FQIN'"
 fi
