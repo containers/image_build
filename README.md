@@ -28,9 +28,10 @@ or `skopeo`:
     `vX.Y`, and `vX.Y.Z`) the image contents will be updated daily to incorporate
     (especially) security updates.
   * `quay.io/containers/*:<version>-immutable` -  Uses the same source as the 'stable'
-    images, is built daily, but version-tags are never overwritten once pushed.  This is
-    intended for users that value an unchanging image tag and digest over having daily
-    security updates.  All three `<version>` values are available, `vX-immutable`,
+    images, built daily, but version-tags are never overwritten once pushed.  Tags
+    will only be removed in case of an extreme security problem.  Otherwise, these
+    images are intended for users that value an unchanging image tag and digest over
+    daily security updates.  All three `<version>` values are available, `vX-immutable`,
     `vX.Y-immutable` and `vX.Y.Z-immutable`.
   * `quay.io/containers/*:latest` and `quay.io/*/stable:latest` -
     Built daily using the same `Containerfile` as above.  The tool versions

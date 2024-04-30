@@ -49,8 +49,7 @@ fi
 # Given the image tag as an argument, apply the tag as appropriate given $FLAVOR_NAME
 # N/B: For the "immutable" flavor, the tag will have `-immutable` appended to it.
 handle_tagging() {
-    local existing
-    local tag
+    local existing tag imtag
     tag="$1"
 
     [[ -n "$tag" ]] || \
@@ -60,24 +59,29 @@ handle_tagging() {
     [[ "$tag" != "latest" ]] || \
         die "handle_tagging() must never be run with tag argument 'latest'."
 
-    if [[ "$FLAVOR_NAME" == "immutable" ]]; then
-        tag="${tag}-immutable"
-
+    # Stable images get <version>-immutable tags only if they don't already exist
+    if [[ "$FLAVOR_NAME" == "stable" ]]; then
+        imtag="${tag}-immutable"
         # ci/test.sh tests never push, there's never any remote image to check.
+        existing=""
+
         # The FQIN envar is defined by the build-push.sh caller
         # shellcheck disable=SC2154
         if [[ ! "$FQIN" =~ testing ]]; then
             existing=$(skopeo list-tags docker://$FQIN | jq -e -r '.Tags[]')
-            if grep -F -x -q "$tag" <<<"$existing"; then
-                msg "Skipping; $FQIN:$tag already exists in registry."
-                return 0
-            fi
+        fi
+
+        if grep -F -x -q "$imtag" <<<"$existing"; then
+            msg "Skipping; $FQIN:$imtag already exists in registry."
+        else
+            msg "Tagging new $FQIN:${tag}-immutable"
+            # The RUNTIME envar is defined by the build-push.sh caller
+            # shellcheck disable=SC2154
+            $RUNTIME tag $FQIN:latest $FQIN:$imtag
         fi
     fi
 
     dbg "Tagging $FQIN:latest $FQIN:$tag"
-    # The RUNTIME envar is defined by the build-push.sh caller
-    # shellcheck disable=SC2154
     $RUNTIME tag $FQIN:latest $FQIN:$tag
     msg "Successfully tagged $FQIN:$tag"
 }
@@ -85,7 +89,7 @@ handle_tagging() {
 # shellcheck disable=SC2154
 dbg "$SCRIPT_FILENAME operating on '$FLAVOR_NAME' flavor of '$FQIN' with tool version '$VERSION' (optional)"
 
-if [[ "$FLAVOR_NAME" == "stable"  || "$FLAVOR_NAME" == "immutable" ]]; then
+if [[ "$FLAVOR_NAME" == "stable" ]]; then
     # Stable images must all be tagged with a version number.
     # Confirm this value is passed in by caller.
     if grep -E -q '^v[0-9]+\.[0-9]+\.[0-9]+'<<<"$VERSION"; then
@@ -103,12 +107,6 @@ if [[ "$FLAVOR_NAME" == "stable"  || "$FLAVOR_NAME" == "immutable" ]]; then
     # Tag as x to provide consistent tag even for a future y+1
     x_ver=$(awk -F '.' '{print $1}'<<<"$xy_ver")
     handle_tagging $x_ver
-
-    # handle_tagging() uses $FQIN:latest as the source, but there can never be an immutable 'latest'.
-    if [[ "$FLAVOR_NAME" == "immutable" ]]; then
-        $RUNTIME manifest rm $FQIN:latest || $RUNTIME rm $FQIN:latest
-        msg "Successfully removed non-immutable $FQIN:latest"
-    fi
 elif [[ "$FLAVOR_NAME" == "aio" ]]; then
     # Not a real flavor, see aio_build_push.sh
     handle_tagging $VERSION
