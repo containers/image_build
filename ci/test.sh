@@ -62,13 +62,22 @@ TEST_REVISION=$(git rev-parse HEAD)
 
 TEST_REPO_URL="file://$SRC_TMP"
 
+# Print an error message and exit non-zero if the FQIN:TAG indicated
+# by the first argument does not exist.
+manifest_exists() {
+    msg "Confirming existence of manifest list '$1'"
+    if ! showrun podman manifest exists "$1"; then
+        die "Failed to find expected manifest-list '$1'"
+    fi
+}
+
 # Given the flavor-name as the first argument, verify built image
 # expectations.  For 'stable' image, verify that containers_build_push.sh will properly
 # version-tagged both FQINs.  For 'immutable' verify version tags only for TEST_FQIN2.
 # For other flavors, verify expected labels on the `latest` tagged FQINs.
 verify_built_images() {
     local _fqin _arch xy_ver x_ver img_ver img_src img_rev _fltr
-    local _test_tag expected_flavor _test_fqins img_docs
+    local test_tag expected_flavor _test_fqins img_docs
     expected_flavor="$1"
     msg "
 ##### Testing execution of '$expected_flavor' images for arches $TESTARCHES #####"
@@ -82,12 +91,6 @@ verify_built_images() {
         test_tag="v$FAKE_VERSION"
         xy_ver="v$FAKE_VER_X.$FAKE_VER_Y"
         x_ver="v$FAKE_VER_X"
-    elif [[ "$expected_flavor" == "immutable" ]]; then
-        expected_flavor="stable"  # Only the tags are different
-        _test_fqins=("$TEST_FQIN" "$TEST_FQIN2")
-        test_tag="v$FAKE_VERSION-immutable"
-        xy_ver="v$FAKE_VER_X.$FAKE_VER_Y-immutable"
-        x_ver="v$FAKE_VER_X-immutable"
     else
         test_tag="latest"
         xy_ver="latest"
@@ -95,6 +98,21 @@ verify_built_images() {
     fi
 
     for _fqin in "${_test_fqins[@]}"; do
+        manifest_exists $_fqin:$test_tag
+
+        if [[ "$expected_flavor" == "stable" ]]; then
+            manifest_exists $_fqin:$xy_ver
+            manifest_exists $_fqin:$x_ver
+            manifest_exists $_fqin:${test_tag}-immutable
+            manifest_exists $_fqin:${xy_ver}-immutable
+            manifest_exists $_fqin:${x_ver}-immutable
+
+            msg "Confirming there is no 'latest-immutable' tag"
+            if showrun podman manifest exists $_fqin:latest-immutable; then
+                die "The latest tag must never ever have an immutable suffix"
+            fi
+        fi
+
         for _arch in $TESTARCHES; do
             msg "Testing container can execute '/bin/true'"
             showrun podman run -i --arch=$_arch --rm "$_fqin:$test_tag" /bin/true
@@ -102,18 +120,6 @@ verify_built_images() {
             msg "Testing container FLAVOR build-arg passed correctly"
             showrun podman run -i --arch=$_arch --rm "$_fqin:$test_tag" \
                 cat /FLAVOUR | tee /dev/stderr | grep -Fxq "FLAVOUR=$expected_flavor"
-
-            if [[ "$expected_flavor" == "stable" ]]; then
-                msg "Testing tag '$xy_ver'"
-                if ! showrun podman manifest exists $_fqin:$xy_ver; then
-                    die "Failed to find manifest-list tagged '$xy_ver'"
-                fi
-
-                msg "Testing tag '$x_ver'"
-                if ! showrun podman manifest exists $_fqin:$x_ver; then
-                    die "Failed to find manifest-list tagged '$x_ver'"
-                fi
-            fi
         done
 
         if [[ "$expected_flavor" == "stable" ]]; then
@@ -175,7 +181,7 @@ remove_built_images() {
     for fqin in $TEST_FQIN $TEST_FQIN2; do
         for tag in "${tags[@]}"; do
             # Not all tests produce every possible tag
-            podman manifest rm $fqin:$tag || true
+            podman manifest rm $fqin:$tag &> /dev/null || true
         done
     done
 }
@@ -186,7 +192,7 @@ _cbp=$CIRRUS_WORKING_DIR/ci/containers_build_push.sh
 
 cd $SRC_TMP
 
-for flavor_arg in stable foobarbaz immutable; do
+for flavor_arg in stable foobarbaz; do
     msg "
 ##### Testing build-push $flavor_arg flavor run of '$TEST_FQIN' & '$TEST_FQIN2' #####"
     remove_built_images

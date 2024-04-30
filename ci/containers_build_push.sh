@@ -18,7 +18,7 @@
 #
 # The third argument indicates the image "FLAVOR", which will be passed into
 # the build as a `--build-arg`.  This is used by the `Containerfile` to alter
-# the build to produce a 'stable', 'immutable', 'testing', or 'upstream' image.
+# the build to produce a 'stable' (with 'immutable'), 'testing', or 'upstream' image.
 # Importantly, this value also determines where the image is pushed, see the
 # top-level README.md for more details.
 #
@@ -87,10 +87,6 @@ if [[ "$CTX_SUB" =~ testing ]]; then
 fi
 
 REPO_FQIN="$_REG/$CTX_SUB/$FLAVOR_NAME"
-if [[ "$FLAVOR_NAME" == "immutable" ]]; then
-    # Only the image version-tag varies
-    REPO_FQIN="$_REG/$CTX_SUB/stable"
-fi
 req_env_vars REPO_URL CTX_SUB FLAVOR_NAME
 
 # Common library defines SCRIPT_FILENAME
@@ -115,11 +111,7 @@ fi
 ### MAIN
 
 declare -a build_args
-if [[ "$FLAVOR_NAME" == "immutable" ]]; then
-    build_args=("--build-arg=FLAVOR=stable")
-else
-    build_args=("--build-arg=FLAVOR=$FLAVOR_NAME")
-fi
+build_args=("--build-arg=FLAVOR=$FLAVOR_NAME")
 
 head_sha=$(git rev-parse HEAD)
 dbg "HEAD is $head_sha"
@@ -172,7 +164,7 @@ done
 modcmdarg="$SCRIPT_PATH/tag_version.sh $FLAVOR_NAME"
 
 # For stable images, the version number of the command is needed for tagging and labeling.
-if [[ "$FLAVOR_NAME" == "stable" || "$FLAVOR_NAME" == "immutable" ]]; then
+if [[ "$FLAVOR_NAME" == "stable" ]]; then
     # only native arch is needed to extract the version
     dbg "Building temporary local-arch image to extract $FLAVOR_NAME version number"
     fqin_tmp="$CTX_SUB:temp"
@@ -206,9 +198,8 @@ if [[ "$FLAVOR_NAME" == "stable" || "$FLAVOR_NAME" == "immutable" ]]; then
         label_args+=("$arg=org.opencontainers.image.url=https://$_REG/containers/$CTX_SUB")
     done
 
-    # Stable images get pushed to 'containers' namespace as latest & version-tagged.
-    # Immutable images are only version-tagged, and are never pushed if they already
-    # exist.
+    # Stable (with immutable) images get pushed to 'containers' namespace as latest & version-tagged.
+    # Immutable images are never pushed if they already exist.
     showrun build-push.sh \
         $_DRNOPUSH \
         --arches="$ARCHES" \
@@ -232,7 +223,7 @@ for arg in "--label" "--annotation"; do
 done
 
 # All flavors are pushed to quay.io/<reponame>/<flavor>, both
-# latest and version-tagged (if available). Stable + Immutable
+# latest and version-tagged (if available). Immutable
 # images are only version-tagged, and are never pushed if they
 # already exist.
 showrun build-push.sh \
