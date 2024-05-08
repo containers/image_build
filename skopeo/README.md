@@ -38,3 +38,32 @@ podman run docker://quay.io/skopeo/stable:latest copy docker://quay.io/skopeo/st
 # Inspect the fedora:latest image
 podman run docker://quay.io/skopeo/stable:latest inspect --config docker://registry.fedoraproject.org/fedora:latest  | jq
 ```
+
+## Sample Usage with private registry
+
+1. Assuming one isn't already defined, setup a Podman secret with the `auth.json` contents.
+   Alternatively, see the [`containers-auth.json` man
+   page](https://github.com/containers/image/blob/main/docs/containers-auth.json.5.md)
+   for the file format.  Regardless
+   of how the file is created, using it as a Podman secret provides more protections than
+   a simple bind-mount.
+
+   ```
+   $ auth_tmp=$(mktemp)
+   $ echo '{}' > $auth_tmp  # JSON formating is required
+   $ podman login --authfile=$auth_tmp example.com/registry
+   $ podman secret create registry_name-auth $auth_tmp
+   $ rm $auth_tmp
+   ```
+
+2. Pass the Podman secret into the Skopeo container along with the intended Skopeo command.
+   For example, to retrieve metadata for `example.com/registry/image_name:tag` run:
+
+   ```
+   $ podman run --secret=registry_name-auth \
+       docker://quay.io/skopeo/stable:latest \
+       inspect --authfile=/run/secrets/registry_name_auth \
+       docker://example.com/registry/image_name:tag
+   ```
+
+   ***NOTE:*** The `--authfile` argument must appear after the sub-command (i.e. `inspect` above)
