@@ -109,7 +109,7 @@ for arg in "--label" "--annotation"; do
     )
 
     # Save users from themselves, block super-duper old versions from being used
-    label_args+=("$arg=quay.expires-after=1y")
+    label_args+=("$arg=quay.expires-after=365d")
 
     # Definitely not any official spec., but offers a quick reference to exactly what produced
     # the images and it's current signature.
