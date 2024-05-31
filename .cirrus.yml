@@ -127,6 +127,7 @@ test_aio_image_build_task:
 
 cron_aio_build_task:
     alias: cron_aio_build
+    name: "Build AIO image"
     only_if: $CIRRUS_CRON == 'cron_aio_build_task'
     gce_instance: *build_push
     env:
