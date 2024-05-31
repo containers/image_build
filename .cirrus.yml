@@ -59,13 +59,28 @@ test_image_build_task:
           matrix: &pbs_images
                 - env:
                       CTX_SUB: podman
-                  skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'podman/**/*')"
+                  # N/B: The following skip conditions also apply to the
+                  # cron_image_build task via the pbs_images alias.  Build
+                  # skipping is desirable only for PRs, never for Cirrus-cron.
+                  skip: |
+                      $CIRRUS_PR != '' &&
+                      !changesInclude('.cirrus.yml',
+                                      'ci/containers_build_push.sh', 'ci/tag_version.sh',
+                                      'podman/**/*')
                 - env:
                       CTX_SUB: buildah
-                  skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'buildah/**/*')"
+                  skip: |
+                      $CIRRUS_PR != '' &&
+                      !changesInclude('.cirrus.yml',
+                                      'ci/containers_build_push.sh', 'ci/tag_version.sh',
+                                      'buildah/**/*')
                 - env:
                       CTX_SUB: skopeo
-                  skip: "!changesInclude('.cirrus.yml', 'ci/containers_build_push.sh', 'ci/tag_version.sh', 'skopeo/**/*')"
+                  skip: |
+                      $CIRRUS_PR != '' &&
+                      !changesInclude('.cirrus.yml',
+                                      'ci/containers_build_push.sh', 'ci/tag_version.sh',
+                                      'skopeo/**/*')
         - env:
               FLAVOR_NAME: testing
           matrix: *pbs_images
