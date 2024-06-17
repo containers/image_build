@@ -66,21 +66,21 @@ test_image_build_task:
                       $CIRRUS_PR != '' &&
                       !changesInclude('.cirrus.yml',
                                       'ci/containers_build_push.sh', 'ci/tag_version.sh',
-                                      'podman/**/*')
+                                      'podman/*')
                 - env:
                       CTX_SUB: buildah
                   skip: |
                       $CIRRUS_PR != '' &&
                       !changesInclude('.cirrus.yml',
                                       'ci/containers_build_push.sh', 'ci/tag_version.sh',
-                                      'buildah/**/*')
+                                      'buildah/*')
                 - env:
                       CTX_SUB: skopeo
                   skip: |
                       $CIRRUS_PR != '' &&
                       !changesInclude('.cirrus.yml',
                                       'ci/containers_build_push.sh', 'ci/tag_version.sh',
-                                      'skopeo/**/*')
+                                      'skopeo/*')
         - env:
               FLAVOR_NAME: testing
           matrix: *pbs_images
