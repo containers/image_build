@@ -28,6 +28,8 @@ ARG FLAVOR=stable
 RUN echo -e "\n\n# Added during image build" >> /etc/dnf/dnf.conf && \
     echo -e "minrate=100\ntimeout=60\n" >> /etc/dnf/dnf.conf
 
+ARG INSTALL_RPMS="podman fuse-overlayfs openssh-clients ucpp"
+
 # Don't include container-selinux and remove
 # directories used by dnf that are just taking
 # up space.
@@ -39,16 +41,16 @@ RUN dnf -y makecache && \
     rpm --setcaps shadow-utils 2>/dev/null && \
     case "${FLAVOR}" in \
       stable) \
-        dnf -y install podman fuse-overlayfs openssh-clients --exclude container-selinux \
+        dnf -y install $INSTALL_RPMS --exclude container-selinux \
       ;; \
       testing) \
-        dnf -y install podman fuse-overlayfs openssh-clients --exclude container-selinux \
+        dnf -y install $INSTALL_RPMS --exclude container-selinux \
             --enablerepo updates-testing \
       ;; \
       upstream) \
         dnf -y install 'dnf-command(copr)' --enablerepo=updates-testing && \
         dnf -y copr enable rhcontainerbot/podman-next && \
-        dnf -y install podman fuse-overlayfs openssh-clients \
+        dnf -y install $INSTALL_RPMS \
             --exclude container-selinux \
             --enablerepo=updates-testing \
       ;; \
@@ -57,12 +59,13 @@ RUN dnf -y makecache && \
         exit 1 \
       ;; \
     esac && \
+    ln -s /usr/bin/ucpp /usr/local/bin/cpp && \
     dnf clean all && \
     rm -rf /var/cache /var/log/dnf* /var/log/yum.*
 
-RUN useradd podman; \
-echo -e "podman:1:999\npodman:1001:64535" > /etc/subuid; \
-echo -e "podman:1:999\npodman:1001:64535" > /etc/subgid;
+RUN useradd podman && \
+    echo -e "podman:1:999\npodman:1001:64535" > /etc/subuid && \
+    echo -e "podman:1:999\npodman:1001:64535" > /etc/subgid
 
 ADD /containers.conf /etc/containers/containers.conf
 ADD /podman-containers.conf /home/podman/.config/containers/containers.conf
