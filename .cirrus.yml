@@ -53,6 +53,7 @@ test_image_build_task:
         ARCHES: amd64
         DRYRUN: 1  # Don't actually push anything, only build.
         A_DEBUG: 1
+        EXPORT_FILENAME: quay_io-${CTX_SUB}-${FLAVOR_NAME}-latest
     matrix: &pbs_matrix
         - env:
               FLAVOR_NAME: upstream
@@ -87,9 +88,14 @@ test_image_build_task:
         - env:
               FLAVOR_NAME: stable
           matrix: *pbs_images
-    script: &pbs_script |
+    build_script: &pbs_script |
         source /etc/automation_environment
         ./ci/containers_build_push.sh ${CIRRUS_REPO_CLONE_URL} ${CTX_SUB} ${FLAVOR_NAME}
+    export_script: |
+        podman save --multi-image-archive --output ./${EXPORT_FILENAME}.tar quay.io/${CTX_SUB}/${FLAVOR_NAME}:latest
+    image_export_artifacts:
+        path: ./${EXPORT_FILENAME}.tar
+        type: application/octet-stream
 
 cron_image_build_task:
     alias: cron_image_build
@@ -120,9 +126,15 @@ test_aio_image_build_task:
         ARCHES: amd64
         DRYRUN: 1  # Don't actually push anything, only build.
         A_DEBUG: 1
+        EXPORT_FILENAME: quay_io-containers-aio-latest
     build_script: &aio_script |
         source /etc/automation_environment
         ./ci/aio_build_push.sh ${CIRRUS_REPO_CLONE_URL}
+    export_script: |
+        podman save --multi-image-archive --output ./${EXPORT_FILENAME}.tar quay.io/containers/aio:latest
+    image_export_artifacts:
+        path: ./${EXPORT_FILENAME}.tar
+        type: application/octet-stream
     test_script: ./aio/test.sh
 
 cron_aio_build_task:
