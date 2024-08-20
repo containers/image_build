@@ -64,3 +64,63 @@ or `skopeo`:
 ## All In One Sample Usage
 
 [Please see the subdirectory README.md](https://github.com/containers/image_build/blob/main/aio/README.md)
+
+## Automation
+
+**Warning**: It's easily possible this section is out of date or hasn't been updated.
+
+The exact details of all build automation in every context is best obtained directly from
+[`.cirrus.yml`](https://github.com/containers/image_build/blob/main/.cirrus.yml) and
+any workflows defined under
+[`.github/workflows`](https://github.com/containers/image_build/tree/main/.github/workflows).
+What follows is simply a general overview.
+
+### Tooling
+
+The heart of all builds is the `containers/automation` repo [build-push.sh script](https://github.com/containers/automation/tree/main/build-push).
+Put simply it does exactly what its name suggests; however, it also has some additional useful features:
+
+* The script always produces manifest-list (i.e. multiple "images" all packed under a single name).  Unless overridden,
+  the build will run in parallel for the `amd64`, `arm64`, `ppc64le`, and `s390x` architectures.  For this to work, the
+  qemu-user-static package (or [container](https://github.com/multiarch/qemu-user-static)) is required to be installed
+  and loaded into the kernel. For the automated builds, this is already available and setup in the VM image.
+* Before and after building, `build-push.sh` is able to execute additional commands/scripts.  These are very
+  useful for
+  [preparing the context](https://github.com/containers/automation/tree/main/build-push#use-in-automation-with-additional-preparation)
+  and/or
+  [modifying image output and/or tags](https://github.com/containers/automation/tree/main/build-push#use-in-automation-with-modified-images).
+  Otherwise the script only/ever builds a `latest` tag.  At the end, the script will search for and push _any_
+  (could be zero) command-line named images regardless of tag.
+* After building, the script will inspect the output of _existing_ named images to ensure it contains manifests for all
+  specified architectures. This is needed to ensure the output represents the input parameters, in case the post-build
+  modification script
+  mangled something.
+* If [a pair of magic envars are set](https://github.com/containers/automation/tree/main/build-push#use-in-build-automation)
+  the script will pushes all images matching the name given on the command-line (i.e. the base image-name w/o a tag).
+  **Great care is required w/in the CI/automation setup to ensure these envar values cannot leak.**
+
+### Automation runtime
+
+The [containers/automation_images](https://github.com/containers/automation_images) repo produces a VM image
+dedicated for use by automation in this repo.  Specifically, the VM is setup
+[using a simple script](https://github.com/containers/automation_images/blob/main/cache_images/build-push_packaging.sh)
+to make sure all the required packages are installed, along with the common automation library and
+[the build-push.sh script](https://github.com/containers/automation/tree/main/build-push).  Note that it always installs
+the latest library and script, so any related problems can be quickly fixed with a CI VM image rebuild.
+
+### Automation scripts
+
+All the top-level build scripts used by automation in this repo, for all contexts, resides under the `ci` subdirectory.  These are tailored for each type of build since some (i.e. Podman, Buildah, and Skopeo) are pushed to multiple registry namespaces. However in all cases, these scripts ultimately end up simply calling
+[the build-push.sh script](https://github.com/containers/automation/tree/main/build-push).
+
+### Image Labels and Annotations
+
+All build scripts (under the `ci` subdirectory) add labels (and annotation) prefixed with `built.by`.  These can be
+extremely helpful for auditing purposes after-the-fact.  For example if a pushed image has something wrong with it,
+the build log URL (`built.by.logs`) are available for some time. Or, if there's any question of what version of
+build script was used, these details are available in `built.by.commit` (git commit) `built.by.exec` (script)
+and `built.by.digest` (script hash).
+
+**Note:** Both labels and annotations are set simply due to script logic convenience and to meet
+future and
+[past OCI recommendations](https://specs.opencontainers.org/image-spec/annotations/#back-compatibility-with-label-schema).
