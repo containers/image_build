@@ -63,11 +63,26 @@ trap "podman unshare rm -rf '$TMPD'" EXIT
 msg "Loading test image"
 showrun podman load -i $HOME/$FQIN_FILE
 
-# These tests come directly from the aio/README.md examples
+
 mkdir $TMPD/cntr_storage
 mkdir $TMPD/context
+
 echo -e 'FROM registry.fedoraproject.org/fedora-minimal:latest\nENV TESTING=true' > $TMPD/context/Containerfile
+# Contents printed on build, mask test string 'Fo0b@r' for rwmount build test
+cat << EOF > $TMPD/context/Containerfile.rwmount
+FROM registry.fedoraproject.org/fedora-minimal:latest as base
+RUN mkdir -p /var/tmp/test
+ADD ./Containerfile /var/tmp/test/
+
+FROM base as final
+RUN --mount=type=bind,from=base,src=/var/tmp/test,dst=/var/tmp/test,rw \
+    set -x && \
+    echo -e '\x46\x6f\x30\x62\x40\x72' > /var/tmp/test/Containerfile && \
+    cat /var/tmp/test/Containerfile
+EOF
+
 for tool in buildah podman; do
+    # The next two tests come directly from the aio/README.md examples
     msg "Verify $tool can create a simple image as root inside $FQIN"
     showrun podman unshare rm -rf $TMPD/cntr_storage/* $TMPD/cntr_storage/.??*
     showrun podman run -i --rm --net=host --security-opt label=disable --privileged \
@@ -84,4 +99,13 @@ for tool in buildah podman; do
         -v $TMPD/cntr_storage:/home/user/.local/share/containers:Z \
         -v $TMPD/context:/home/user/context:Z \
         $FQIN $tool build -t rootless_testimage /home/user/context
+
+    # Verify problematic rwmount build functions
+    # This type of build is frequently done w/in CI systems
+    msg "Verify $tool can perform a vfs/chroot build inside $FQIN"
+    showrun podman run -i --rm \
+        -v $TMPD/context:/root/context:Z \
+        $FQIN $tool --storage-driver=vfs build --isolation=chroot -t rwmount_testimage -f Containerfile.rwmount /root/context \
+        | tee $TMPD/rwmount.output
+    showrun grep -Fqx 'Fo0b@r' $TMPD/rwmount.output
 done
