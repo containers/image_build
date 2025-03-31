@@ -6,7 +6,7 @@ env:
     CIRRUS_SHELL: "/bin/bash"
     # No need to go crazy, but grab enough to cover most PRs
     CIRRUS_CLONE_DEPTH: 10
-    IMAGE_SUFFIX: "c20240529t141726z-f40f39d13"
+    IMAGE_SUFFIX: "c20250324t111922z-f41f40d13"
 
 gcp_credentials: ENCRYPTED[88b219cf6b4f2d70c4ff7f8c6c3186396102e14a27b47b985e40a0a0bc5337a270f9eee195b36ff6b3e2f07558998a95]
 
@@ -135,7 +135,7 @@ test_aio_image_build_task:
     image_export_artifacts:
         path: ./${EXPORT_FILENAME}.tar
         type: application/octet-stream
-    test_script: ./aio/test.sh
+    test_script: &aio_test ./aio/test.sh
 
 cron_aio_build_task:
     alias: cron_aio_build
@@ -146,6 +146,7 @@ cron_aio_build_task:
         CONTAINERS_USERNAME: *cntu
         CONTAINERS_PASSWORD: *cntp
     build_script: *aio_script
+    test_script: *aio_test
 
 # This task is critical.  It updates the "last-used by" timestamp stored
 # in metadata for all VM images.  This mechanism functions in tandem with
