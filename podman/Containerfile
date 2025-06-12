@@ -99,5 +99,9 @@ RUN mkdir -p /var/lib/shared/overlay-images \
     touch /var/lib/shared/vfs-images/images.lock && \
     touch /var/lib/shared/vfs-layers/layers.lock
 
+# Rootless helper scripts
+COPY podman-rootless /usr/local/bin/
+COPY run-as-podman /usr/local/bin/
+
 ENV _CONTAINERS_USERNS_CONFIGURED="" \
     BUILDAH_ISOLATION=chroot
