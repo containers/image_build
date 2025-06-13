@@ -28,7 +28,7 @@ ARG FLAVOR=stable
 RUN echo -e "\n\n# Added during image build" >> /etc/dnf/dnf.conf && \
     echo -e "minrate=100\ntimeout=60\n" >> /etc/dnf/dnf.conf
 
-ARG INSTALL_RPMS="podman fuse-overlayfs openssh-clients ucpp"
+ARG INSTALL_RPMS="podman fuse-overlayfs openssh-clients ucpp awk"
 
 # Don't include container-selinux and remove
 # directories used by dnf that are just taking
