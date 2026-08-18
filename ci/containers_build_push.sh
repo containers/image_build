@@ -30,18 +30,13 @@
 
 set -eo pipefail
 
-if [[ -r "/etc/automation_environment" ]]; then
-    source /etc/automation_environment  # defines AUTOMATION_LIB_PATH
-    #shellcheck disable=SC1090,SC2154
-    source "$AUTOMATION_LIB_PATH/common_lib.sh"
-    dbg "Using automation common library version $(<$AUTOMATION_LIB_PATH/../AUTOMATION_VERSION)"
-else
-    echo "Expecting to find automation common library installed."
-    exit 1
-fi
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=lib.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/lib.sh"
 
-if [[ -z $(type -P build-push.sh) ]]; then
-    die "It does not appear that build-push.sh is installed properly"
+BUILD_PUSH="$SCRIPT_PATH/build-push.sh"
+if [[ ! -x "$BUILD_PUSH" ]]; then
+    die "Expecting to find an executable at '$BUILD_PUSH'"
 fi
 
 if [[ -z "$1" ]]; then
@@ -56,12 +51,7 @@ fi
 req_env_vars CI SCRIPT_PATH
 
 # Assume transitive debugging state for build-push.sh if set
-if [[ "$(automation_version | cut -d '.' -f 1)" -ge 4 ]]; then
-    # Valid for version 4.0.0 and above only
-    export A_DEBUG
-else
-    export DEBUG
-fi
+export A_DEBUG
 
 # Arches to build by default - may be overridden for testing
 ARCHES="${ARCHES:-amd64,ppc64le,s390x,arm64}"
@@ -89,8 +79,6 @@ fi
 REPO_FQIN="$_REG/$CTX_SUB/$FLAVOR_NAME"
 req_env_vars REPO_URL CTX_SUB FLAVOR_NAME
 
-# Common library defines SCRIPT_FILENAME
-# shellcheck disable=SC2154
 dbg "$SCRIPT_FILENAME operating constants:
     REPO_URL=$REPO_URL
     CTX_SUB=$CTX_SUB
@@ -153,14 +141,12 @@ for arg in "--label" "--annotation"; do
         "$arg=built.by.digest=sha256:$(sha256sum<${BASH_SOURCE[0]} | awk '{print $1}')"
     )
 
-    # Script may not be running under Cirrus-CI
-    if [[ -n "$CIRRUS_TASK_ID" ]]; then
-        label_args+=("$arg=built.by.logs=https://cirrus-ci.com/task/$CIRRUS_TASK_ID")
+    # shellcheck disable=SC2154
+    if [[ -n "$GITHUB_RUN_ID" ]]; then
+        label_args+=("$arg=built.by.logs=${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
     fi
 done
 
-# SCRIPT_PATH is defined by the automation library
-# shellcheck disable=SC2154
 modcmdarg="$SCRIPT_PATH/tag_version.sh $FLAVOR_NAME"
 
 # For stable images, the version number of the command is needed for tagging and labeling.
@@ -200,7 +186,7 @@ if [[ "$FLAVOR_NAME" == "stable" ]]; then
 
     # Stable (with immutable) images get pushed to 'containers' namespace as latest & version-tagged.
     # Immutable images are never pushed if they already exist.
-    showrun build-push.sh \
+    showrun "$BUILD_PUSH" \
         $_DRNOPUSH \
         --arches="$ARCHES" \
         --modcmd="$modcmdarg" \
@@ -226,7 +212,7 @@ done
 # latest and version-tagged (if available). Immutable
 # images are only version-tagged, and are never pushed if they
 # already exist.
-showrun build-push.sh \
+showrun "$BUILD_PUSH" \
     $_DRNOPUSH \
     --arches="$ARCHES" \
     --modcmd="$modcmdarg" \

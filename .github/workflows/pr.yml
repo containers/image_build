@@ -1,0 +1,164 @@
+---
+
+name: PR
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: "Validate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read  # to check out the sources being linted
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # shellcheck is pre-installed on GitHub-hosted ubuntu runners.
+      - run: ./ci/shellcheck.sh
+
+  path-filter:
+    name: "Determine what changed"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read  # to read the paths being filtered
+    outputs:
+      podman: ${{ steps.filter.outputs.podman }}
+      buildah: ${{ steps.filter.outputs.buildah }}
+      skopeo: ${{ steps.filter.outputs.skopeo }}
+      aio: ${{ steps.filter.outputs.aio }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: .github/filters.yaml
+
+  matrix:
+    name: "Assemble build matrix"
+    needs: [path-filter]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      json: ${{ steps.gen.outputs.json }}
+      any: ${{ steps.gen.outputs.any }}
+    steps:
+      - name: Generate matrix
+        id: gen
+        env:
+          # An empty matrix is a workflow error, not a skip; hence `any`.
+          PODMAN: ${{ needs.path-filter.outputs.podman }}
+          BUILDAH: ${{ needs.path-filter.outputs.buildah }}
+          SKOPEO: ${{ needs.path-filter.outputs.skopeo }}
+        run: |
+          entries=()
+          for tool in podman buildah skopeo; do
+              varname="${tool^^}"
+              [[ "${!varname}" == "true" ]] || continue
+              for flavor in stable testing upstream; do
+                  entries+=("{\"tool\":\"$tool\",\"flavor\":\"$flavor\",\"ns_key\":\"$varname\"}")
+              done
+          done
+          json="[$(IFS=,; echo "${entries[*]}")]"
+          echo "Matrix: $json"
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+          if ((${#entries[@]})); then
+              echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: [validate, matrix]
+    if: needs.matrix.outputs.any == 'true'
+    # Must match the called workflow: declaring id-token there without the
+    # caller granting it is a startup failure.  Unused on PRs, which never push.
+    permissions:
+      id-token: write
+    uses: ./.github/workflows/build.yml
+    with:
+      push: false
+      # Native arch only; cron covers the full set.
+      arches: amd64
+      matrix_json: ${{ needs.matrix.outputs.json }}
+      timeout: 60
+
+  build-aio:
+    needs: [validate, path-filter]
+    if: needs.path-filter.outputs.aio == 'true'
+    permissions:
+      id-token: write
+    uses: ./.github/workflows/build_aio.yml
+    with:
+      push: false
+      arches: amd64
+      test: true
+      timeout: 60
+
+  test-build-push:
+    name: "Test build-push scripts function"
+    needs: [validate, path-filter]
+    if: >-
+      github.repository == 'podman-container-tools/image_build'
+      && needs.path-filter.outputs.ci == 'true'
+    runs-on: cncf-ubuntu-8-32-x86
+    timeout-minutes: 60
+    permissions: {}
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: quay.io/fedora/fedora:latest  # zizmor: ignore[unpinned-images]
+      options: --privileged --device /dev/fuse
+      volumes:
+        - /var/lib/containers
+    env:
+      A_DEBUG: 1
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y buildah podman skopeo qemu-user-static jq git awk
+          test -c /dev/fuse || { echo "::error::/dev/fuse missing"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: fix git safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Register qemu binfmt handlers
+        run: ./ci/setup_qemu.sh
+      # TMPDIR deliberately not overridden -- ci/test.sh needs /tmp.
+      - name: Test build-push scripts
+        run: ./ci/test.sh
+
+  # Merge protection is set up for this job name, do not change it.
+  success:
+    name: "Total Success"
+    needs: [validate, path-filter, matrix, build, build-aio, test-build-push]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check all required jobs
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          if [[ "$FAILED" == "true" ]] || [[ "$CANCELLED" == "true" ]]; then
+              echo "One or more required jobs failed or were cancelled"
+              exit 1
+          fi
+          echo "All required jobs passed or were skipped"

@@ -1,0 +1,28 @@
+# Path filters for pr.yml; cron ignores these and always builds everything.
+# ci/** is deliberately broad -- build-push.sh is vendored there now.
+shared: &shared
+  - '.github/workflows/**'
+  - '.github/filters.yaml'
+  - 'ci/**'
+
+podman:
+  - *shared
+  - 'podman/**'
+
+buildah:
+  - *shared
+  - 'buildah/**'
+
+skopeo:
+  - *shared
+  - 'skopeo/**'
+
+aio:
+  - *shared
+  - 'aio/**'
+
+# Gates the test-build-push job.
+ci:
+  - 'ci/**'
+  - '.github/workflows/pr.yml'
+  - '.github/filters.yaml'

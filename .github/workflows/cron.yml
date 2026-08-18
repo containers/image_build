@@ -1,0 +1,103 @@
+---
+
+name: cron
+
+# These publish to quay.io.  testing/upstream carry quay.expires-after, so
+# quay deletes them outright if rebuilds stop.
+on:
+  schedule:
+    # Off the hour: GitHub sheds scheduled events under load.
+    - cron: "17 3 * * 1-5"   # podman/buildah/skopeo, daily
+    - cron: "41 4 * * 1"     # AIO, weekly
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Publish to quay.io (leave off for a dry-run smoke test)."
+        type: boolean
+        default: false
+      arches:
+        description: "Comma-separated arches; narrow this to keep a smoke test short."
+        type: string
+        default: "amd64,ppc64le,s390x,arm64"
+
+permissions: {}
+
+# Never cancel a partially-completed publish.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.schedule == '17 3 * * 1-5'
+    permissions:
+      id-token: write
+    uses: ./.github/workflows/build.yml
+    with:
+      # `inputs` is null on a schedule event, so both fall through.
+      push: ${{ github.event_name == 'schedule' || inputs.push }}
+      arches: ${{ inputs.arches || 'amd64,ppc64le,s390x,arm64' }}
+      matrix_json: >-
+        [{"tool":"podman","flavor":"stable","ns_key":"PODMAN"},
+         {"tool":"podman","flavor":"testing","ns_key":"PODMAN"},
+         {"tool":"podman","flavor":"upstream","ns_key":"PODMAN"},
+         {"tool":"buildah","flavor":"stable","ns_key":"BUILDAH"},
+         {"tool":"buildah","flavor":"testing","ns_key":"BUILDAH"},
+         {"tool":"buildah","flavor":"upstream","ns_key":"BUILDAH"},
+         {"tool":"skopeo","flavor":"stable","ns_key":"SKOPEO"},
+         {"tool":"skopeo","flavor":"testing","ns_key":"SKOPEO"},
+         {"tool":"skopeo","flavor":"upstream","ns_key":"SKOPEO"}]
+      timeout: 180
+
+  build-aio:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.schedule == '41 4 * * 1'
+    permissions:
+      id-token: write
+    uses: ./.github/workflows/build_aio.yml
+    with:
+      push: ${{ github.event_name == 'schedule' || inputs.push }}
+      arches: ${{ inputs.arches || 'amd64,ppc64le,s390x,arm64' }}
+      test: false
+      timeout: 180
+
+  notify:
+    name: "Notify on failure"
+    needs: [build, build-aio]
+    if: always() && github.repository == 'podman-container-tools/image_build'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Compose failure notice
+        if: contains(needs.*.result, 'failure')
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cat > email_body.txt <<EOF
+          A scheduled image rebuild failed on ${GITHUB_REPOSITORY}.
+
+              ${RUN_URL}
+
+          This needs prompt attention.  The 'testing' and 'upstream' images are
+          labelled quay.expires-after=30d and 15d respectively, so quay.io will
+          delete them outright if the rebuilds do not resume.  The 'stable' and
+          'aio' images will simply go stale, missing security updates.
+          EOF
+          cat email_body.txt
+
+      - name: Send failure notification e-mail
+        if: contains(needs.*.result, 'failure')
+        uses: dawidd6/action-send-mail@94de994a9f6fffee200243214e17002e2920bb59 # v18
+        with:
+          server_address: ${{ secrets.ACTION_MAIL_SERVER }}
+          server_port: 465
+          username: ${{ secrets.ACTION_MAIL_USERNAME }}
+          password: ${{ secrets.ACTION_MAIL_PASSWORD }}
+          from: ${{ secrets.ACTION_MAIL_SENDER }}
+          to: podman-monitor@lists.podman.io
+          subject: Image rebuild failure on ${{ github.repository }}
+          body: file://./email_body.txt

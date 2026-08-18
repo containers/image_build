@@ -1,0 +1,151 @@
+---
+
+name: build tool images
+
+on:
+  workflow_call:
+    inputs:
+      push:
+        description: "Push the built manifest-lists to quay.io."
+        type: boolean
+        default: false
+      arches:
+        description: "Comma-separated golang arch names to build."
+        type: string
+        default: "amd64"
+      matrix_json:
+        description: >-
+          JSON array of {tool, flavor, ns_key}.  Must be non-empty: an empty
+          matrix is a workflow error, not a skip.
+        type: string
+        required: true
+      timeout:
+        type: number
+        required: false
+
+permissions: {}
+
+jobs:
+  build:
+    name: "${{ matrix.tool }}/${{ matrix.flavor }}"
+    if: github.repository == 'podman-container-tools/image_build'
+    runs-on: cncf-ubuntu-8-32-x86
+    timeout-minutes: ${{ inputs.timeout || 90 }}
+    permissions:
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.matrix_json) }}
+    container:
+      # Fully qualified: a bare `fedora:latest` resolves to Docker Hub.
+      image: quay.io/fedora/fedora:latest  # zizmor: ignore[unpinned-images]
+      options: --privileged --device /dev/fuse
+      volumes:
+        # buildah's overlay driver cannot stack on the container's overlayfs.
+        - /var/lib/containers
+    env:
+      REGISTRY_AUTH_FILE: /tmp/auth.json
+      A_DEBUG: ${{ inputs.push && '0' || '1' }}
+      ARCHES: ${{ inputs.arches }}
+      DRYRUN: ${{ inputs.push && '0' || '1' }}
+      CTX_SUB: ${{ matrix.tool }}
+      FLAVOR_NAME: ${{ matrix.flavor }}
+    steps:
+      # Must precede checkout: the base image has no git.
+      - name: Install dependencies
+        run: |
+          dnf install -y buildah podman skopeo qemu-user-static jq git awk
+          test -c /dev/fuse || { echo "::error::/dev/fuse missing"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: fix git safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Register qemu binfmt handlers
+        run: ./ci/setup_qemu.sh
+
+      - name: Smoke-test emulation
+        run: |
+          for arch in ${ARCHES//,/ }; do
+              echo "Testing $arch"
+              podman run --rm --arch="$arch" \
+                  registry.fedoraproject.org/fedora-minimal:latest /bin/true
+          done
+
+      - name: Obtain quay.io token
+        if: ${{ inputs.push }}
+        env:
+          QUAY_ROBOT: ${{ vars[format('QUAY_ROBOT_{0}', matrix.ns_key)] }}
+          NS_KEY: ${{ matrix.ns_key }}
+        run: |
+          [[ -n "$QUAY_ROBOT" ]] || \
+              { echo "::error::variable QUAY_ROBOT_${NS_KEY} is unset"; exit 1; }
+          OIDC=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r -e .value)
+          echo "::add-mask::$OIDC"
+          TOK=$(curl -sSf "https://quay.io/oauth2/federation/robot/token" \
+              -u "$QUAY_ROBOT:$OIDC" | jq -r -e .token)
+          echo "::add-mask::$TOK"
+          echo "QUAY_TOKEN=$TOK" >> "$GITHUB_ENV"
+
+      - name: Log in to quay.io/${{ matrix.tool }}
+        if: ${{ inputs.push }}
+        uses: redhat-actions/podman-login@50c2d9a331bb67c8fdab99b86455fad05e2e3252 # v2.0
+        with:
+          registry: quay.io/${{ matrix.tool }}
+          username: ${{ vars[format('QUAY_ROBOT_{0}', matrix.ns_key)] }}
+          password: ${{ env.QUAY_TOKEN }}
+
+      - name: Obtain quay.io/containers token
+        if: ${{ inputs.push && matrix.flavor == 'stable' }}
+        env:
+          CONTAINERS_ROBOT: ${{ vars.QUAY_ROBOT_CONTAINERS }}
+        run: |
+          [[ -n "$CONTAINERS_ROBOT" ]] || \
+              { echo "::error::variable QUAY_ROBOT_CONTAINERS is unset"; exit 1; }
+          OIDC=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r -e .value)
+          echo "::add-mask::$OIDC"
+          TOK=$(curl -sSf "https://quay.io/oauth2/federation/robot/token" \
+              -u "$CONTAINERS_ROBOT:$OIDC" | jq -r -e .token)
+          echo "::add-mask::$TOK"
+          echo "CONTAINERS_TOKEN=$TOK" >> "$GITHUB_ENV"
+
+      - name: Log in to quay.io/containers
+        if: ${{ inputs.push && matrix.flavor == 'stable' }}
+        uses: redhat-actions/podman-login@50c2d9a331bb67c8fdab99b86455fad05e2e3252 # v2.0
+        with:
+          registry: quay.io/containers
+          username: ${{ vars.QUAY_ROBOT_CONTAINERS }}
+          password: ${{ env.CONTAINERS_TOKEN }}
+
+      - name: Build ${{ matrix.tool }}/${{ matrix.flavor }}
+        run: |
+          ./ci/containers_build_push.sh \
+              "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+              "$CTX_SUB" "$FLAVOR_NAME"
+
+      - name: Export built image as an artifact
+        if: ${{ !inputs.push }}
+        env:
+          EXPORT_FILENAME: quay_io-${{ matrix.tool }}-${{ matrix.flavor }}-latest
+        run: |
+          podman save --multi-image-archive \
+              --output "./${EXPORT_FILENAME}.tar" \
+              "quay.io/${CTX_SUB}/${FLAVOR_NAME}:latest"
+
+      - name: Upload image artifact
+        if: ${{ !inputs.push }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quay_io-${{ matrix.tool }}-${{ matrix.flavor }}-latest
+          path: ./quay_io-${{ matrix.tool }}-${{ matrix.flavor }}-latest.tar
+          if-no-files-found: error
+          retention-days: 14

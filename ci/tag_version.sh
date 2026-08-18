@@ -11,22 +11,15 @@
 
 set -eo pipefail
 
-if [[ -r "/etc/automation_environment" ]]; then
-    source /etc/automation_environment  # defines AUTOMATION_LIB_PATH
-    #shellcheck disable=SC1090,SC2154
-    source "$AUTOMATION_LIB_PATH/common_lib.sh"
-else
-    echo "Unexpected operating environment"
-    exit 1
-fi
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=lib.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/lib.sh"
 
 # Vars defined by build-push.sh spec. for mod scripts
 req_env_vars SCRIPT_FILENAME SCRIPT_FILEPATH RUNTIME PLATFORMOS FQIN CONTEXT \
              PUSH ARCHES REGSERVER NAMESPACE IMGNAME MODCMD
 
 if [[ "$#" -eq 0 ]]; then
-    # Defined by common automation library
-    # shellcheck disable=SC2154
     die "$SCRIPT_FILENAME expects at least one argument"
 fi
 
@@ -39,8 +32,6 @@ if [[ "$#" -ge 1 ]]; then
 fi
 
 if [[ -z "$FLAVOR_NAME" ]]; then
-    # Defined by common_lib.sh
-    # shellcheck disable=SC2154
     warn "$SCRIPT_FILENAME passed empty flavor-name argument."
 elif [[ -z "$VERSION" ]]; then
     warn "$SCRIPT_FILENAME received empty version argument."
@@ -68,7 +59,8 @@ handle_tagging() {
         # The FQIN envar is defined by the build-push.sh caller
         # shellcheck disable=SC2154
         if [[ ! "$FQIN" =~ testing ]]; then
-            existing=$(skopeo list-tags docker://$FQIN | jq -e -r '.Tags[]')
+            # No `jq -e`: it exits 4 on an empty .Tags[] and kills the build.
+            existing=$(skopeo list-tags docker://$FQIN | jq -r '.Tags[]')
         fi
 
         if grep -F -x -q "$imtag" <<<"$existing"; then
@@ -86,7 +78,6 @@ handle_tagging() {
     msg "Successfully tagged $FQIN:$tag"
 }
 
-# shellcheck disable=SC2154
 dbg "$SCRIPT_FILENAME operating on '$FLAVOR_NAME' flavor of '$FQIN' with tool version '$VERSION' (optional)"
 
 if [[ "$FLAVOR_NAME" == "stable" ]]; then

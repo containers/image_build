@@ -17,18 +17,13 @@
 
 set -eo pipefail
 
-if [[ -r "/etc/automation_environment" ]]; then
-    source /etc/automation_environment  # defines AUTOMATION_LIB_PATH
-    #shellcheck disable=SC1090,SC2154
-    source "$AUTOMATION_LIB_PATH/common_lib.sh"
-    dbg "Using automation common library version $(<$AUTOMATION_LIB_PATH/../AUTOMATION_VERSION)"
-else
-    echo "Expecting to find automation common library installed."
-    exit 1
-fi
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=lib.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/lib.sh"
 
-if [[ -z $(type -P build-push.sh) ]]; then
-    die "It does not appear that build-push.sh is installed properly"
+BUILD_PUSH="$SCRIPT_PATH/build-push.sh"
+if [[ ! -x "$BUILD_PUSH" ]]; then
+    die "Expecting to find an executable at '$BUILD_PUSH'"
 fi
 
 if [[ -z "$1" ]]; then
@@ -56,8 +51,6 @@ REPO_FQIN="$_REG/containers/aio"
 
 req_env_vars REPO_URL CI SCRIPT_PATH
 
-# Common library defines SCRIPT_FILENAME
-# shellcheck disable=SC2154
 dbg "$SCRIPT_FILENAME operating constants:
     REPO_URL=$REPO_URL
     ARCHES=$ARCHES
@@ -87,8 +80,6 @@ docs_url="${REPO_URL%.git}/blob/${head_sha}/aio/README.md"
 version_tag=$(date -u +v%Y.%m.%d)
 # Note: There's no actual "aio" FLAVOR, the argument is being abused here
 # to avoid writing an entirely separate tag_version.sh.
-# SCRIPT_PATH is defined by the automation library
-# shellcheck disable=SC2154
 modcmdarg="$SCRIPT_PATH/tag_version.sh aio $version_tag"
 
 # Labels to add to all images as per
@@ -120,14 +111,14 @@ for arg in "--label" "--annotation"; do
         "$arg=built.by.digest=sha256:$(sha256sum<${BASH_SOURCE[0]} | awk '{print $1}')"
     )
 
-    # Script may not be running under Cirrus-CI
-    if [[ -n "$CIRRUS_TASK_ID" ]]; then
-        label_args+=("$arg=built.by.logs=https://cirrus-ci.com/task/$CIRRUS_TASK_ID")
+    # shellcheck disable=SC2154
+    if [[ -n "$GITHUB_RUN_ID" ]]; then
+        label_args+=("$arg=built.by.logs=${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
     fi
 done
 
 dbg "Building AIO manifest-list '$_REG/containers/aio"
-showrun build-push.sh \
+showrun "$BUILD_PUSH" \
     $_DRNOPUSH \
     --arches="$ARCHES" \
     --modcmd="$modcmdarg" \

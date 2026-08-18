@@ -1,0 +1,147 @@
+---
+
+name: build AIO image
+
+on:
+  workflow_call:
+    inputs:
+      push:
+        type: boolean
+        default: false
+      arches:
+        type: string
+        default: "amd64"
+      test:
+        description: "Run aio/test.sh.  Used for PRs, not cron."
+        type: boolean
+        default: false
+      timeout:
+        type: number
+        required: false
+
+permissions: {}
+
+jobs:
+  build-aio:
+    name: "aio"
+    if: github.repository == 'podman-container-tools/image_build'
+    runs-on: cncf-ubuntu-8-32-x86
+    timeout-minutes: ${{ inputs.timeout || 90 }}
+    permissions:
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: quay.io/fedora/fedora:latest  # zizmor: ignore[unpinned-images]
+      options: --privileged --device /dev/fuse
+      volumes:
+        - /var/lib/containers
+    env:
+      REGISTRY_AUTH_FILE: /tmp/auth.json
+      A_DEBUG: ${{ inputs.push && '0' || '1' }}
+      ARCHES: ${{ inputs.arches }}
+      DRYRUN: ${{ inputs.push && '0' || '1' }}
+    steps:
+      - name: Install dependencies
+        run: |
+          # openssh/shadow-utils are for aio/test.sh's rootless ssh re-exec.
+          dnf install -y buildah podman skopeo qemu-user-static jq git awk \
+                         openssh-server openssh-clients shadow-utils \
+                         procps-ng util-linux
+          # Images often strip these caps; rootless podman needs them.
+          rpm --setcaps shadow-utils
+          test -c /dev/fuse || { echo "::error::/dev/fuse missing"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: fix git safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Register qemu binfmt handlers
+        run: ./ci/setup_qemu.sh
+
+      - name: Smoke-test emulation
+        run: |
+          for arch in ${ARCHES//,/ }; do
+              echo "Testing $arch"
+              podman run --rm --arch="$arch" \
+                  registry.fedoraproject.org/fedora-minimal:latest /bin/true
+          done
+
+      - name: Obtain quay.io token
+        if: ${{ inputs.push }}
+        env:
+          CONTAINERS_ROBOT: ${{ vars.QUAY_ROBOT_CONTAINERS }}
+        run: |
+          [[ -n "$CONTAINERS_ROBOT" ]] || \
+              { echo "::error::variable QUAY_ROBOT_CONTAINERS is unset"; exit 1; }
+          OIDC=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r -e .value)
+          echo "::add-mask::$OIDC"
+          TOK=$(curl -sSf "https://quay.io/oauth2/federation/robot/token" \
+              -u "$CONTAINERS_ROBOT:$OIDC" | jq -r -e .token)
+          echo "::add-mask::$TOK"
+          echo "QUAY_TOKEN=$TOK" >> "$GITHUB_ENV"
+
+      - name: Log in to quay.io/containers
+        if: ${{ inputs.push }}
+        uses: redhat-actions/podman-login@50c2d9a331bb67c8fdab99b86455fad05e2e3252 # v2.0
+        with:
+          registry: quay.io/containers
+          username: ${{ vars.QUAY_ROBOT_CONTAINERS }}
+          password: ${{ env.QUAY_TOKEN }}
+
+      - name: Build AIO image
+        run: |
+          ./ci/aio_build_push.sh "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+
+      # Before the tests, so the image survives a test failure.
+      - name: Export built image as an artifact
+        if: ${{ !inputs.push }}
+        run: |
+          podman save --multi-image-archive \
+              --output ./quay_io-containers-aio-latest.tar \
+              quay.io/containers/aio:latest
+
+      - name: Upload image artifact
+        if: ${{ !inputs.push }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quay_io-containers-aio-latest
+          path: ./quay_io-containers-aio-latest.tar
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Start sshd for the rootless test
+        if: ${{ inputs.test }}
+        run: |
+          # PAM rejects the freshly-useradd'ed user.  `UsePAM no` is not an
+          # alternative: sshd would then refuse the account useradd left locked.
+          sed -i '1i account sufficient pam_permit.so' /etc/pam.d/sshd
+
+          ssh-keygen -A
+          mkdir -p /run/sshd /var/empty/sshd
+          /usr/sbin/sshd -E /tmp/sshd.log
+          ssh-keyscan -T 30 localhost >/dev/null
+
+      - name: Test AIO image
+        if: ${{ inputs.test }}
+        env:
+          # Nested container storage; must be a host fs, not this overlayfs.
+          # Not job-wide -- ci/test.sh requires /tmp.
+          TMPDIR: ${{ runner.temp }}/aio-test
+        run: |
+          mkdir -p "$TMPDIR"
+          chmod 0777 "$TMPDIR"
+          ./aio/test.sh
+
+      - name: sshd log
+        if: ${{ failure() && inputs.test }}
+        run: |
+          echo "::group::sshd.log"
+          cat /tmp/sshd.log || echo "(no sshd log)"
+          echo "::endgroup::"
+

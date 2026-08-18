@@ -1,17 +1,15 @@
+#!/bin/bash
 
-
-# DO NOT USE - This script is intended to be called by the Cirrus-CI
-# `test_build-push` task.  It is not intended to be used otherwise
-# and may cause harm.  It's purpose is to confirm the
-# 'containers_build_push.sh' script behaves in an expected way, given
-# a special testing git repository (setup here) as input.
+# DO NOT USE - Confirms 'containers_build_push.sh' behaves as expected against
+# a throwaway git repository.  Needs podman, buildah, jq and qemu-user-static.
 
 set -eo pipefail
 
-source /etc/automation_environment
-source $AUTOMATION_LIB_PATH/common_lib.sh
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=lib.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/lib.sh"
 
-req_env_vars CIRRUS_CI CIRRUS_CHANGE_IN_REPO
+req_env_vars CI
 
 # Architectures to test with (golang standard names)
 TESTARCHES="amd64 arm64"
@@ -23,14 +21,12 @@ FAKE_VER_X=$RANDOM
 FAKE_VER_Y=$RANDOM
 FAKE_VER_Z=$RANDOM
 FAKE_VERSION="$FAKE_VER_X.$FAKE_VER_Y.$FAKE_VER_Z"
-# Contrived source repository for testing
-SRC_TMP=$(mktemp -p '' -d tmp-build-push-test-XXXX)
+# Must stay under /tmp: containers_build_push.sh guards on '^file:///tmp/'.
+SRC_TMP=$(TMPDIR=/tmp mktemp -p '' -d tmp-build-push-test-XXXX)
 # Do not change, containers_build_push.sh is sensitive to the 'testing' name
 TEST_FQIN=example.com/testing/stable
 # Stable build should result in manifest list tagged this
 TEST_FQIN2=example.com/containers/testing
-# Don't allow containers_build_push.sh or tag_version.sh to auto-update at runtime
-export BUILDPUSHAUTOUPDATED=1
 
 trap "rm -rf $SRC_TMP" EXIT
 
@@ -82,7 +78,7 @@ verify_built_images() {
     msg "
 ##### Testing execution of '$expected_flavor' images for arches $TESTARCHES #####"
     podman --version
-    req_env_vars TESTARCHES FAKE_VERSION TEST_FQIN TEST_FQIN2 CIRRUS_REPO_CLONE_URL
+    req_env_vars TESTARCHES FAKE_VERSION TEST_FQIN TEST_FQIN2
 
     declare -a _test_fqins
     _test_fqins=("${TEST_FQIN%stable}$expected_flavor")
@@ -133,8 +129,6 @@ verify_built_images() {
         _fltr='.[].Config.Labels."org.opencontainers.image.source"'
         img_src=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
         msg "    img_src=$img_src"
-        # Checked at beginning of script
-        # shellcheck disable=SC2154
         showrun grep -F -q "$TEST_REPO_URL" <<<"$img_src"
         showrun grep -F -q "$TEST_REVISION" <<<"$img_src"
 
@@ -155,8 +149,6 @@ verify_built_images() {
         _fltr='.[].Config.Labels."built.by.commit"'
         img_bbc=$(podman inspect $_fqin:$test_tag | jq -r -e "$_fltr")
         msg "    img_bbc=$img_bbc"
-        # Checked at beginning of script
-        # shellcheck disable=SC2154
         showrun test "$img_bbc" == "$TEST_REVISION"
 
         msg "Testing image $_fqin:$test_tag docs label"
@@ -186,9 +178,7 @@ remove_built_images() {
     done
 }
 
-req_env_vars CIRRUS_WORKING_DIR
-# shellcheck disable=SC2154
-_cbp=$CIRRUS_WORKING_DIR/ci/containers_build_push.sh
+_cbp="$SCRIPT_PATH/containers_build_push.sh"
 
 cd $SRC_TMP
 

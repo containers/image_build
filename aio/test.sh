@@ -6,15 +6,9 @@
 
 set -eo pipefail
 
-if [[ -r "/etc/automation_environment" ]]; then
-    source /etc/automation_environment  # defines AUTOMATION_LIB_PATH
-    #shellcheck disable=SC1090,SC2154
-    source "$AUTOMATION_LIB_PATH/common_lib.sh"
-    dbg "Using automation common library version $(<$AUTOMATION_LIB_PATH/../AUTOMATION_VERSION)"
-else
-    echo "Expecting to find automation common library installed."
-    exit 1
-fi
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=../ci/lib.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../ci/lib.sh"
 
 FQIN="quay.io/containers/aio:latest"
 FQIN_FILE="$(basename $FQIN | tr ':' '-').tar"
@@ -50,13 +44,11 @@ if [[ "$UID" -eq 0 ]]; then
     showrun cp "/root/.ssh/id_rsa.pub" "$TUHOME/.ssh/authorized_keys"
     showrun chown -R $TESTUSER:$TESTUSER "$TUHOME/.ssh"
     showrun chmod 0600 "$TUHOME/.ssh/authorized_keys"
-    # $SCRIPT_PATH/$SCRIPT_FILENAME defined by automation library
-    # shellcheck disable=SC2154
-    showrun exec ssh $TESTUSER@localhost $SCRIPT_PATH/$SCRIPT_FILENAME
+    # $TMPDIR must be passed explicitly; sshd drops it.
+    showrun exec ssh "$TESTUSER@localhost" \
+        "TMPDIR='${TMPDIR:-/tmp}' $SCRIPT_PATH/$SCRIPT_FILENAME"
 fi
 
-# SCRIPT_FILENAME defined by automation library
-# shellcheck disable=SC2154
 TMPD=$(mktemp -p '' -d ${SCRIPT_FILENAME}_XXXXX_tmp)
 trap "podman unshare rm -rf '$TMPD'" EXIT
 

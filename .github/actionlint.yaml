@@ -1,0 +1,13 @@
+---
+
+# Self-hosted runner labels, so actionlint does not flag them as unknown.
+self-hosted-runner:
+  labels:
+    - cncf-ubuntu-2-8-x86
+    - cncf-ubuntu-4-16-x86
+    - cncf-ubuntu-8-32-x86
+    - cncf-ubuntu-16-64-x86
+    - cncf-ubuntu-24-96-x86
+    - cncf-ubuntu-32-128-x86
+    - cncf-ubuntu-24-96-arm
+    - cncf-ubuntu-32-128-arm
