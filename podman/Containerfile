@@ -1,10 +1,7 @@
 # podman/Containerfile
 #
-# Build a Podman container image from the latest
-# stable version of Podman on the Fedoras Updates System.
-# https://bodhi.fedoraproject.org/updates/?search=podman
-# This image can be used to create a secured container
-# that runs safely with privileges within the container.
+# Build a Podman container image from the latest stable version in the Fedoras
+# Updates System.
 #
 # FLAVOR defaults to stable if unset
 #
@@ -17,12 +14,19 @@
 #                   https://copr.fedorainfracloud.org/coprs/rhcontainerbot/podman-next/
 #
 # https://bodhi.fedoraproject.org/updates/?search=podman
+#
+# This image can be used to create a container that runs safely with the
+# default set of privileges granted to the container.
 
 FROM registry.fedoraproject.org/fedora:latest
 
 ARG SOURCE_DATE_EPOCH
 
 ARG FLAVOR=stable
+
+ARG UUSER=podman
+
+LABEL "io.containers.capabilities"="CHOWN,DAC_OVERRIDE,FOWNER,FSETID,KILL,NET_BIND_SERVICE,SETFCAP,SETGID,SETPCAP,SETUID,SYS_CHROOT"
 
 # When building for multiple-architectures in parallel using emulation
 # it's really easy for one/more dnf processes to timeout or mis-count
@@ -33,9 +37,8 @@ RUN echo -e "\n\n# Added during image build" >> /etc/dnf/dnf.conf && \
 
 ARG INSTALL_RPMS="podman fuse-overlayfs openssh-clients cpp git-core ${SOURCE_DATE_EPOCH:+sqlite}"
 
-# Don't include container-selinux and remove
-# directories used by dnf that are just taking
-# up space.
+# Don't include container-selinux, and remove directories used by dnf that are
+# just taking up space.
 # TODO: rpm --setcaps... needed due to Fedora (base) image builds
 #       being (maybe still?) affected by
 #       https://bugzilla.redhat.com/show_bug.cgi?id=1995337#c3
@@ -44,17 +47,19 @@ RUN dnf -y makecache && \
     rpm --setcaps shadow-utils 2>/dev/null && \
     case "${FLAVOR}" in \
       stable) \
-        dnf -y install $INSTALL_RPMS --exclude container-selinux \
+        dnf -y install $INSTALL_RPMS \
+            --exclude=container-selinux \
       ;; \
       testing) \
-        dnf -y install $INSTALL_RPMS --exclude container-selinux \
-            --enablerepo updates-testing \
+        dnf -y install $INSTALL_RPMS \
+            --exclude=container-selinux \
+            --enablerepo=updates-testing \
       ;; \
       upstream) \
         dnf -y install 'dnf-command(copr)' --enablerepo=updates-testing && \
         dnf -y copr enable rhcontainerbot/podman-next && \
         dnf -y install $INSTALL_RPMS \
-            --exclude container-selinux \
+            --exclude=container-selinux \
             --enablerepo=updates-testing \
       ;; \
       *) \
@@ -63,41 +68,95 @@ RUN dnf -y makecache && \
       ;; \
     esac && \
     dnf clean all && \
+    latest=$(rpm -qa --qf '%{buildtime}\n' | sort | tail -n 1) ; \
+    echo SOURCE_DATE_EPOCH=${latest} ; \
     if test -n "$SOURCE_DATE_EPOCH" ; then \
+        test "$latest" -eq "${SOURCE_DATE_EPOCH}" ; \
         sqlite3 /usr/lib/sysimage/libdnf5/transaction_history.sqlite "UPDATE trans SET dt_begin=$SOURCE_DATE_EPOCH, dt_end=$SOURCE_DATE_EPOCH; PRAGMA journal_mode=DELETE; PRAGMA journal_mode=WAL" ; \
     fi && \
     rm -fv /etc/machine-id /var/lib/systemd/random-seed /var/lib/dnf/repos/*/countme && \
     rm -fv /usr/lib/systemd/profile.d/* && \
-    rm -rf /var/cache /var/log/dnf* /var/log/hawkey.log /var/log/yum.*
+    rm -rf /var/cache/*/* /var/log/dnf* /var/log/yum.*
 
-# It's assumed `podman` will end up with UID/GID 1000
-RUN useradd podman && \
-    echo -e "root:1:65535\npodman:1:999\npodman:1001:64535" > /etc/subuid && \
-    echo -e "root:1:65535\npodman:1:999\npodman:1001:64535" > /etc/subgid
+# Copy & modify the system-wide defaults: use fuse-overlay storage.
+COPY --chmod=644 containers.conf /etc/containers/containers.conf
+RUN case "${FLAVOR}" in \
+      stable|testing) \
+          sed -e 's|^#mount_program|mount_program|g' \
+              -e '/^ *additionalimagestores = \[$/a "/var/lib/shared",' \
+              -e 's|^mountopt[[:space:]]*=.*$|mountopt = "nodev,fsync=0"|g' \
+              /usr/share/containers/storage.conf \
+              > /etc/containers/storage.conf ; \
+          chmod 644 /etc/containers/storage.conf ; \
+      ;; \
+      upstream) \
+          mkdir -p /etc/containers/containers.rootful.conf.d ; \
+          mv /etc/containers/containers.conf /etc/containers/containers.rootful.conf.d/20-image_build.conf ; \
+          mkdir -p /etc/containers/storage.rootful.conf.d ; \
+          echo '[storage]' > /etc/containers/storage.rootful.conf.d/20-image_build.conf ; \
+          echo 'driver = "overlay"' >> /etc/containers/storage.rootful.conf.d/20-image_build.conf ; \
+          echo '[storage.options]' >> /etc/containers/storage.rootful.conf.d/20-image_build.conf ; \
+          echo 'additionalimagestores = ["/usr/lib/containers/storage","/var/lib/shared"]' >> /etc/containers/storage.rootful.conf.d/20-image_build.conf ; \
+          echo '[storage.overlay]' >> /etc/containers/storage.rootful.conf.d/20-image_build.conf ; \
+          echo 'mount_program = "/usr/bin/fuse-overlayfs"' >> /etc/containers/storage.rootful.conf.d/20-image_build.conf ; \
+          echo 'mountopt= "nodev,fsync=0"' >> /etc/containers/storage.rootful.conf.d/20-image_build.conf ; \
+      ;; \
+      *) \
+        printf "\\nFLAVOR argument must be set and valid, currently: '${FLAVOR}'\\n\\n" 1>&2 && \
+        exit 1 \
+      ;; \
+    esac
 
-ADD /containers.conf /etc/containers/containers.conf
-ADD /podman-containers.conf /home/podman/.config/containers/containers.conf
+# Force `podman` to end up with UID/GID 1000, set up some ID mappings, and
+# create directories that they will need to be able to write to.
+RUN groupadd -g 1000 $UUSER && useradd -u 1000 -g 1000 $UUSER && \
+    echo -e "root:1:65535\n$UUSER:1:999\n$UUSER:1001:64535" > /etc/subuid && \
+    echo -e "root:1:65535\n$UUSER:1:999\n$UUSER:1001:64535" > /etc/subgid && \
+    mkdir -p /home/$UUSER/.local/share/containers && \
+    mkdir -p /home/$UUSER/.config/containers && \
+    mkdir -p /run/user/1000 && \
+    chown -R $UUSER:$UUSER /home/$UUSER /run/user/1000
 
-RUN mkdir -p /home/podman/.local/share/containers && \
-    chown podman:podman -R /home/podman && \
-    chmod 644 /etc/containers/containers.conf
+# Create modified configurations for the unprivileged user.
+COPY --chmod=644 podman-containers.conf /home/$UUSER/.config/containers/containers.conf
+RUN case "${FLAVOR}" in \
+      stable|testing) \
+          sed -e 's|^graphroot|# graphroot|g' \
+              -e 's|^runroot|# runroot|g' \
+              -e '/^ *\"\/usr\/lib\/containers\/storage\" *, *$/d' \
+              /etc/containers/storage.conf \
+              > /home/$UUSER/.config/containers/storage.conf ; \
+          chmod 644 /home/$UUSER/.config/containers/storage.conf ; \
+      ;; \
+      upstream) \
+          mkdir -p /etc/containers/containers.rootless.conf.d ; \
+          mv /home/$UUSER/.config/containers/containers.conf /etc/containers/containers.rootless.conf.d/20-image_build.conf ; \
+          mkdir -p /etc/containers/storage.rootless.conf.d ; \
+          echo '[storage]' > /etc/containers/storage.rootless.conf.d/20-image_build.conf ; \
+          echo 'driver = "overlay"' >> /etc/containers/storage.rootless.conf.d/20-image_build.conf ; \
+          echo '[storage.options]' >> /etc/containers/storage.rootless.conf.d/20-image_build.conf ; \
+          echo 'additionalimagestores = ["/var/lib/shared"]' >> /etc/containers/storage.rootless.conf.d/20-image_build.conf ; \
+          echo '[storage.overlay]' >> /etc/containers/storage.rootless.conf.d/20-image_build.conf ; \
+          echo 'mount_program = "/usr/bin/fuse-overlayfs"' >> /etc/containers/storage.rootless.conf.d/20-image_build.conf ; \
+          echo 'mountopt= "nodev,fsync=0"' >> /etc/containers/storage.rootless.conf.d/20-image_build.conf ; \
+      ;; \
+      *) \
+        printf "\\nFLAVOR argument must be set and valid, currently: '${FLAVOR}'\\n\\n" 1>&2 && \
+        exit 1 \
+      ;; \
+    esac && \
+    chown -R $UUSER:$UUSER /home/$UUSER
 
-# Copy & modify the defaults to provide reference if runtime changes needed.
-# Changes here are required for running with fuse-overlay storage inside container.
-RUN sed -e 's|^#mount_program|mount_program|g' \
-           -e '/additionalimage.*/a "/var/lib/shared",' \
-           -e 's|^mountopt[[:space:]]*=.*$|mountopt = "nodev,fsync=0"|g' \
-           /usr/share/containers/storage.conf \
-           > /etc/containers/storage.conf
-
-# Setup internal Podman to pass subscriptions down from host to internal container
+# Setup internal Podman to pass secrets/subscriptions that are passed down from
+# the host on down to commands it runs.
 RUN printf '/run/secrets/etc-pki-entitlement:/run/secrets/etc-pki-entitlement\n/run/secrets/rhsm:/run/secrets/rhsm\n' > /etc/containers/mounts.conf
 
 # Note VOLUME options must always happen after the chown call above
-# RUN commands can not modify existing volumes
+# Way back when, RUN commands could not modify existing volumes
 VOLUME /var/lib/containers
-VOLUME /home/podman/.local/share/containers
+VOLUME /home/$UUSER/.local/share/containers
 
+# Setup the ability to use additional stores with this container image.
 RUN mkdir -p /var/lib/shared/overlay-images \
              /var/lib/shared/overlay-layers \
              /var/lib/shared/vfs-images \
@@ -107,5 +166,6 @@ RUN mkdir -p /var/lib/shared/overlay-images \
     touch /var/lib/shared/vfs-images/images.lock && \
     touch /var/lib/shared/vfs-layers/layers.lock
 
-ENV _CONTAINERS_USERNS_CONFIGURED="" \
-    BUILDAH_ISOLATION=chroot
+# Set an environment variable to default to chroot isolation for RUN
+# instructions.
+ENV BUILDAH_ISOLATION=chroot
